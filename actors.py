@@ -128,12 +128,16 @@ class Lane(Rectangle):
 			if frog.intersects(obstacle):
 				if self.type == 'car':
 					frog.reset()
+					self.cache_score=0
+
 					checked = True
 				if self.type == 'log':
 					attached = True
 					frog.attach(obstacle)
 		if not attached and self.type == 'log':
 			frog.reset()
+			self.cache_score=0
+
 			checked = True
 		return checked
 
@@ -151,19 +155,28 @@ class Lane(Rectangle):
 #SCORE
 class Score:
 
+
 	def __init__(self):
 		self.score = 0
+		self.cache_score=0
 		self.high_score = 0
 		self.high_lane = 1
-		self.lives = 3
+		self.lives = 1
 
 	def update(self, points):
 		self.score += points
+		if(self.score>=self.cache_score):
+			
+			self.cache_score=self.score
+
 		if self.score > self.high_score:
 			self.high_score = self.score
+			self.high_lane+=1
+		#print("hl:",self.high_lane)
 
 	def reset(self):
 		self.score = 0
+		self.cache_score=0
 		self.high_lane = 1
-		self.lives = 3
+		self.lives = 1
 		
