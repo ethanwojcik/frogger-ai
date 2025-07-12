@@ -165,6 +165,7 @@ class Score:
 
 	def update(self, points):
 		self.score += points
+		#print("self.score",self.score)
 		if(self.score>=self.cache_score):
 			
 			self.cache_score=self.score
