@@ -40,42 +40,7 @@ g_vars['fps'] = 175
 g_vars['grid'] = 32
 g_vars['window'] = pygame.display.set_mode( [g_vars['width'], g_vars['height']], pygame.HWSURFACE)
 
-class RandomAgent:
-    def select_action(self, game_state):
-        # Actions: 0=left, 1=right, 2=up, 3=down
-        return np.random.choice([0, 1, 2, 3])
-class QLearningAgent:
-    def __init__(self, state_shape, n_actions, alpha=0.1, gamma=0.99, epsilon=1.0, epsilon_decay=0.995, epsilon_min=0.05):
-        self.q_table = np.zeros(state_shape + (n_actions,))
-        self.alpha = alpha
-        self.gamma = gamma
-        self.epsilon = epsilon
-        self.epsilon_decay = epsilon_decay
-        self.epsilon_min = epsilon_min
-        self.n_actions = n_actions
 
-    def get_state(self, game_state):
-        # Discretize frog's position to grid coordinates
-        x, y, score, lives = game_state
-        grid_x = int(x // 32)
-        grid_y = int(y // 32)
-        return (grid_x, grid_y)
-
-    def select_action(self, game_state):
-        state = self.get_state(game_state)
-        if np.random.rand() < self.epsilon:
-            return np.random.choice(self.n_actions)
-        return np.argmax(self.q_table[state])
-
-    def update(self, prev_state, action, reward, next_state, done):
-        best_next = np.max(self.q_table[next_state])
-        td_target = reward + self.gamma * best_next * (not done)
-        td_error = td_target - self.q_table[prev_state + (action,)]
-        self.q_table[prev_state + (action,)] += self.alpha * td_error
-
-    def decay_epsilon(self):
-        self.epsilon = max(self.epsilon * self.epsilon_decay, self.epsilon_min)
-	
 from collections import deque
 
 class DQNAgent:
@@ -88,8 +53,10 @@ class DQNAgent:
         self.batch_size = batch_size
         self.memory = deque(maxlen=memory_size)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
         self.model = DQN(state_dim, n_actions).to(self.device)
+        self.target_net = DQN(state_dim, n_actions).to(self.device)
+        self.target_net.load_state_dict(self.model.state_dict())
+        self.target_net.eval()
         self.optimizer = optim.Adam(self.model.parameters(), lr=lr)
         self.loss_fn = nn.MSELoss()
 
@@ -118,7 +85,7 @@ class DQNAgent:
 
         q_values = self.model(states).gather(1, actions)
         with torch.no_grad():
-            next_q_values = self.model(next_states).max(1, keepdim=True)[0]
+            next_q_values = self.target_net(next_states).max(1, keepdim=True)[0]
             target_q = rewards + self.gamma * next_q_values * (1 - dones)
 
         loss = self.loss_fn(q_values, target_q)
@@ -169,7 +136,7 @@ class App:
 		#self.lanes.append( Lane( 8, t='car', c=(195, 195, 195), n=0, l=2, spc=180, spd=-2) )
 		#self.lanes.append( Lane( 9, t='car', c=(195, 195, 195), n=0, l=4, spc=240, spd=-1) )
 		#self.lanes.append( Lane( 10, t='car', c=(195, 195, 195), n=0, l=2, spc=130, spd=2.5) )
-		self.lanes.append( Lane( 11, t='car', c=(195, 195, 195), n=2, l=2, spc=200, spd=1) )
+		self.lanes.append( Lane( 11, t='car', c=(195, 195, 195), n=2, l=3, spc=200, spd=1) )
 		self.lanes.append( Lane( 12, c=(50, 192, 122) ) )
 
 	def event(self, event):
@@ -208,7 +175,7 @@ class App:
 		
 		self.frog.update()
 		if (g_vars['height']-self.frog.y)//g_vars['grid'] > self.score.high_lane:
-			if self.score.high_lane == 11 or inv_lane_index==11:
+			if self.score.high_lane == 3 or inv_lane_index==3:
 				self.frog.reset()
 				self.score.update(200)
 			else: 
@@ -276,7 +243,7 @@ class App:
 		if(self.frog is None):
 			frog_x,frog_y=5,5
 		else:
-			frog_x, frog_y = self.frog.x,self.frog.y
+			frog_x, frog_y =int(self.frog.x // g_vars['grid']), int(self.frog.y // g_vars['grid'])
 
 		score, lives = self.score.score, self.score.lives
 
@@ -287,9 +254,16 @@ class App:
 				for obs in lane.obstacles:
 					# Discretize positions to grid
 					#todo: come back to this maybe
+					
 					grid_x = int(obs.x // g_vars['grid'])
+					grid_x_2=int((obs.x + obs.w) // g_vars['grid'])
+					# print()
+					# print(grid_x)
+
+					# print(grid_x_2)
 					grid_y = int(obs.y // g_vars['grid'])
 					obstacle_positions.append((grid_x, grid_y))
+					obstacle_positions.append((grid_x_2, grid_y))
 
 
 
@@ -297,7 +271,7 @@ class App:
 		flat_obs = [coord for pos in obstacle_positions for coord in pos]
 
 		# Return as a tuple: (frog_x, frog_y, score, lives, obs1_x, obs1_y, obs2_x, obs2_y, ...)
-		return (frog_x, frog_y, score, lives, *flat_obs)
+		return (frog_x, frog_y, *flat_obs)
 	
 	def step(self, action):
 		# Map action to frog movement
@@ -309,69 +283,61 @@ class App:
 			self.frog.move(0, -1)
 		elif action == 3:
 			self.frog.move(0, 1)
+		elif action ==4:
+			pass
 		self.update()
 
 
-	def run_qlearning_episode(self, agent):
-		self.init()
-		self.state = 'PLAYING'
-		total_reward = 0
-		prev_game_state = self.get_game_state()
-		#print(prev_game_state)
-		prev_state = agent.get_state(prev_game_state)
-		while self.state == 'PLAYING':
-			action = agent.select_action(prev_game_state)
-			#print("Action:",action)
-			prev_score = self.score.high_score
-			self.step(action)
-			reward = self.score.high_score - prev_score
-			#print("action:",action ," has reward ", reward)
-			next_game_state = self.get_game_state()
 
-			next_state = agent.get_state(next_game_state)
-			#print("next_game_state:",next_game_state)
-			#print("next_state:",next_state)
-			done = self.score.lives == 0
-
-			agent.update(prev_state, action, reward, next_state, done)
-			total_reward += reward
-			prev_game_state = next_game_state
-			prev_state = next_state
-			self.update()
-			self.draw()
-			self.clock.tick(g_vars['fps'])
-			if done:
-				break
-		agent.decay_epsilon()
-		
-		return self.score.high_score
 	def run_dqn_episode(self, agent):
-		self.init()
-		self.state = 'PLAYING'
-		total_reward = 0
 
-		state = np.array(self.get_game_state(), dtype=np.float32)
-		while self.state == 'PLAYING':
-			action = agent.select_action(state)
-			prev_score = self.score.high_score
-			self.step(action)
-			reward = self.score.high_score - prev_score
-			next_state = np.array(self.get_game_state(), dtype=np.float32)
-			done = self.score.lives == 0
-			agent.store(state, action, reward, next_state, done)
-			agent.train()
-			total_reward += reward
-			state = next_state
-			if self.score.score>0:
-				self.score.score-=1
+		episodes = 1000
 
-			self.update()
-			self.draw()
-			self.clock.tick(g_vars['fps'])
-			if done:
-				break
-		agent.decay_epsilon()
-		return self.score.high_score
+		steps_done=0
+		rewards_per_episode=[]
+		for ep in range(episodes):		
+			self.init()
+			self.state = 'PLAYING'
+			total_reward = 0
+
+			state = np.array(self.get_game_state(), dtype=np.float32)
+			#print(state)
+			episode_reward=0
+			while self.state == 'PLAYING':
+				action = agent.select_action(state)
+				prev_score = self.score.score
+				self.step(action)
+				
+				next_state = np.array(self.get_game_state(), dtype=np.float32)
+				#print(next_state)
+				#print(reward)
+
+				self.update()
+				self.draw()
+				done = self.score.lives == 0
+				reward=self.score.score
+				agent.store(state, action, reward, next_state, done)
+				total_reward += reward
+				state = next_state
+				episode_reward+=self.score.score
+				agent.train()
+
+				if(self.score.score>0):
+					self.score.score-=1
+
+
+				self.clock.tick(g_vars['fps'])
+				if(steps_done % 100) ==0:
+					agent.target_net.load_state_dict(agent.model.state_dict())
+				steps_done+=1
+
+				if done:
+					break
+			agent.decay_epsilon()
+			
+			print(f"Episode {ep+1}: Total Reward (Score) = {episode_reward}, Epsilon = {agent.epsilon:.3f}")
+
+			
 if __name__ == "__main__":
 
 
@@ -379,10 +345,10 @@ if __name__ == "__main__":
 	app = App()
 	app.init()
 	state_dim = len(app.get_game_state())
-	agent = DQNAgent(state_dim=state_dim, n_actions=4)  # 4 actions: left, right, up, down
+	agent= DQNAgent(state_dim=state_dim, n_actions=5)  # 4 actions: left, right, up, down
 
-	episodes = 1000
-	for ep in range(episodes):
-		reward = app.run_dqn_episode(agent)
-		print(f"Episode {ep+1}: Total Reward (Score) = {reward}, Epsilon = {agent.epsilon:.3f}")
+	app.run_dqn_episode(agent)
+	# for ep in range(episodes):
+	# 	#reward = app.run_dqn_episode(agent,rewards_per_episode)
+	# 	print(f"Episode {ep+1}: Total Reward (Score) = {reward}, Epsilon = {agent.epsilon:.3f}")
 #app.execute()
