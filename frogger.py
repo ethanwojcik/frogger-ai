@@ -36,7 +36,7 @@ class DQN(nn.Module):
 g_vars = {}
 g_vars['width'] = 416
 g_vars['height'] = 416
-g_vars['fps'] = 175
+g_vars['fps'] = 30
 g_vars['grid'] = 32
 g_vars['window'] = pygame.display.set_mode( [g_vars['width'], g_vars['height']], pygame.HWSURFACE)
 
@@ -44,7 +44,7 @@ g_vars['window'] = pygame.display.set_mode( [g_vars['width'], g_vars['height']],
 from collections import deque
 
 class DQNAgent:
-    def __init__(self, state_dim, n_actions, gamma=0.99, epsilon=1.0, epsilon_decay=0.995, epsilon_min=0.01, lr=1e-3, batch_size=64, memory_size=10000):
+    def __init__(self, state_dim, n_actions, gamma=0.99, epsilon=1.0, epsilon_decay=0.995, epsilon_min=0.05, lr=1e-3, batch_size=64, memory_size=10000):
         self.n_actions = n_actions
         self.gamma = gamma
         self.epsilon = epsilon
@@ -70,7 +70,9 @@ class DQNAgent:
 
     def store(self, state, action, reward, next_state, done):
         self.memory.append((state, action, reward, next_state, done))
-
+    def load(self, filename):
+        self.model.load_state_dict(torch.load(filename))
+        self.model.eval()
     def train(self):
         if len(self.memory) < self.batch_size:
             return
@@ -131,13 +133,22 @@ class App:
 		self.lanes.append( Lane( 6, c=(50, 192, 122) ) )
 		self.lanes.append( Lane( 7, c=(50, 192, 122) ) )
 		self.lanes.append( Lane( 8, c=(50, 192, 122) ) )
-		self.lanes.append( Lane( 9, c=(50, 192, 122) ) )
+		#self.lanes.append( Lane( 9, c=(50, 192, 122) ) )
+		unit=g_vars['width']/13
+		self.lanes.append( Lane( 9, t='car', c=(195, 195, 195), n=1, l=13, spc=250, spd=-unit) )
+
 		self.lanes.append( Lane( 10, c=(50, 192, 122) ) )
 		#self.lanes.append( Lane( 8, t='car', c=(195, 195, 195), n=0, l=2, spc=180, spd=-2) )
 		#self.lanes.append( Lane( 9, t='car', c=(195, 195, 195), n=0, l=4, spc=240, spd=-1) )
 		#self.lanes.append( Lane( 10, t='car', c=(195, 195, 195), n=0, l=2, spc=130, spd=2.5) )
-		self.lanes.append( Lane( 11, t='car', c=(195, 195, 195), n=2, l=3, spc=200, spd=1) )
+		#self.lanes.append( Lane( 7, t='car', c=(195, 195, 195), n=2, l=3, spc=140, spd=1) )
+
+		self.lanes.append( Lane( 11, t='car', c=(195, 195, 195), n=1, l=13, spc=195, spd=unit) )
 		self.lanes.append( Lane( 12, c=(50, 192, 122) ) )
+
+		rand_x=random.randint(0,13)
+	
+		self.frog.x=(g_vars['width']-self.frog.w)/13 * rand_x
 
 	def event(self, event):
 		if event.type == QUIT:
@@ -173,9 +184,9 @@ class App:
 		#print("lane_index:",inv_lane_index)
 		#print("high_lane",self.score.high_lane)
 		
-		self.frog.update()
+		#self.frog.update()
 		if (g_vars['height']-self.frog.y)//g_vars['grid'] > self.score.high_lane:
-			if self.score.high_lane == 3 or inv_lane_index==3:
+			if self.score.high_lane == 5 or inv_lane_index==5:
 				self.frog.reset()
 				self.score.update(200)
 			else: 
@@ -186,7 +197,7 @@ class App:
 			self.frog.reset()
 			self.score.reset()
 			self.state = 'START'
-		#self.frog.update()
+		self.frog.update()
 
 	def draw(self):
 		g_vars['window'].fill( (0, 0, 0) )
@@ -283,35 +294,80 @@ class App:
 			self.frog.move(0, -1)
 		elif action == 3:
 			self.frog.move(0, 1)
-		elif action ==4:
+		elif action == 4:
 			pass
+
 		self.update()
+
+	def handle_fps(self,agent):
+		stuck=False
+		while True:
+			for event in pygame.event.get():
+				
+				if event.type == KEYDOWN and event.key == K_UP and not stuck:
+					g_vars['fps']+=5
+					break
+				if event.type == KEYDOWN and event.key == K_s and not stuck:
+					torch.save(agent.model.state_dict(),"frogger_dqn.pth")
+					print("model saved to frogger_dqn.pth")
+					break
+				if event.type == KEYDOWN and event.key == K_d and not stuck:
+					g_vars['fps']=1
+
+					break
+				if event.type == KEYDOWN and event.key == K_DOWN and not stuck:
+					g_vars['fps']-=5
+					break
+
+				if event.type == KEYDOWN and event.key == K_SPACE:
+					if(stuck==True):
+						stuck=False
+						g_vars['fps']-=30
+
+						break
+					stuck=True
+					#print("stuck")
+					
+
+
+			if(stuck==False):
+				break
+					
+
+		
 
 
 
 	def run_dqn_episode(self, agent):
 
-		episodes = 1000
+		episodes = 2000000
 
 		steps_done=0
+		total_high_score=0
+		rolling_high_score=0
 		rewards_per_episode=[]
+		rolling_effective=0
+		effective=0
 		for ep in range(episodes):		
 			self.init()
 			self.state = 'PLAYING'
 			total_reward = 0
-
+			episode_hs=0
 			state = np.array(self.get_game_state(), dtype=np.float32)
 			#print(state)
 			episode_reward=0
 			while self.state == 'PLAYING':
+
 				action = agent.select_action(state)
 				prev_score = self.score.score
 				self.step(action)
 				
+
+				
 				next_state = np.array(self.get_game_state(), dtype=np.float32)
 				#print(next_state)
 				#print(reward)
-
+				episode_hs=self.score.high_score
 				self.update()
 				self.draw()
 				done = self.score.lives == 0
@@ -319,35 +375,54 @@ class App:
 				agent.store(state, action, reward, next_state, done)
 				total_reward += reward
 				state = next_state
-				episode_reward+=self.score.score
+				episode_reward+=self.score.high_score
 				agent.train()
 
 				if(self.score.score>0):
 					self.score.score-=1
 
-
+				self.handle_fps(agent)
+				
+				#print(g_vars['fps'])
 				self.clock.tick(g_vars['fps'])
-				if(steps_done % 100) ==0:
+				if(steps_done % 500) ==0:
 					agent.target_net.load_state_dict(agent.model.state_dict())
 				steps_done+=1
 
 				if done:
 					break
 			agent.decay_epsilon()
-			
-			print(f"Episode {ep+1}: Total Reward (Score) = {episode_reward}, Epsilon = {agent.epsilon:.3f}")
+			if((ep+1)%250==0):
+				percentage=effective/ep
+				percent_roll=rolling_effective/250
+				print("======================")
+				print(f"Episode {ep+1}: Effective: {effective} out of {ep} total = {percentage:.3f}%, Rolling Average: {rolling_effective} in last 250 = {percent_roll:.3f}%")
+				print(f"Average High Score={(total_high_score/ep):.3f}, Rolling High Score={(rolling_high_score/250):.3f}")
+				print("======================")
+				rolling_effective=0
+				rolling_high_score=0
+			if(episode_hs!=0):
+				effective+=1
+				total_high_score+=episode_hs
+				rolling_high_score+=episode_hs
+				rolling_effective+=1
+				#print(f"Episode {ep+1}: Total Reward (Score) = {episode_reward}, Epsilon = {agent.epsilon:.3f}, High Score = {episode_hs}")
 
 			
 if __name__ == "__main__":
 
 
 
+
 	app = App()
 	app.init()
+	
+	
 	state_dim = len(app.get_game_state())
 	agent= DQNAgent(state_dim=state_dim, n_actions=5)  # 4 actions: left, right, up, down
-
+	#agent.load("frogger_dqn.pth")
 	app.run_dqn_episode(agent)
+	app.cleanup()
 	# for ep in range(episodes):
 	# 	#reward = app.run_dqn_episode(agent,rewards_per_episode)
 	# 	print(f"Episode {ep+1}: Total Reward (Score) = {reward}, Epsilon = {agent.epsilon:.3f}")
