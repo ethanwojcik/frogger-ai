@@ -38,15 +38,16 @@ class Lane(Rectangle):
 		self.type = t
 		self.color = c
 		self.obstacles = []
-		offset = random.uniform(0, 200)
-		if self.type == 'car':
-			o_color = (128, 128, 128)
-		if self.type == 'log':
-			o_color = (185, 122, 87)
-		for i in range(n):
-			self.obstacles.append(Obstacle(offset + spc * i, y * g_vars['grid'], l * g_vars['grid'], g_vars['grid'], spd, o_color))
-
-
+		if n > 0:
+			offset = 0
+			if self.type == 'car':
+				o_color = (128, 128, 128)
+			elif self.type == 'log':
+				o_color = (185, 122, 87)
+			else:
+				o_color = (0, 0, 0)
+			for i in range(n):
+				self.obstacles.append(Obstacle(offset + spc * i, y * g_vars['grid'], l * g_vars['grid'], g_vars['grid'], spd, o_color))
 class Frog(Rectangle):
 
 	def __init__(self, x, y, w):
@@ -55,9 +56,12 @@ class Frog(Rectangle):
 		self.y0 = y
 		self.color = (34, 177, 76)
 		self.attached = None
+		self.ob=False
 
 	def reset(self):
-		self.x = self.x0
+		rand_x=random.randint(0,13)
+
+		self.x = (g_vars['width'])/13 * rand_x
 		self.y = self.y0
 		self.attach(None)
 
@@ -73,13 +77,23 @@ class Frog(Rectangle):
 			self.x += self.attached.speed
 
 		if self.x + self.w > g_vars['width']:
+		#	print("went_off side")
+			self.ob=True
 			self.x = g_vars['width'] - self.w
 		
 		if self.x < 0:
+			#print("went_off side 2")
+			self.ob=True
+
 			self.x = 0
 		if self.y + self.h > g_vars['width']:
+			#print("went_off bottom")
+			self.ob=True
+
 			self.y = g_vars['width'] - self.w
 		if self.y < 0:
+			#print("went_off top")
+
 			self.y = 0
 
 	def draw(self):
@@ -112,20 +126,25 @@ class Lane(Rectangle):
 		self.type = t
 		self.color = c
 		self.obstacles = []
-		offset = 0#random.uniform(0, 200)
-		if self.type == 'car':
-			o_color = (128, 128, 128)
-		if self.type == 'log':
-			o_color = (185, 122, 87)
-		for i in range(n):
-			self.obstacles.append(Obstacle(offset + spc * i, y * g_vars['grid'], l * g_vars['grid'], g_vars['grid'], spd, o_color))
+		if n > 0:
+			offset = 0
+			if self.type == 'car':
+				o_color = (128, 128, 128)
+			elif self.type == 'log':
+				o_color = (185, 122, 87)
+			else:
+				o_color = (0, 0, 0)
+			for i in range(n):
+				self.obstacles.append(Obstacle(offset + spc * i, y * g_vars['grid'], l * g_vars['grid'], g_vars['grid'], spd, o_color))
 
 	def check(self, frog):
 		checked = False
 		attached = False
 		frog.attach(None)
 		for obstacle in self.obstacles:
+			#print("checking")
 			if frog.intersects(obstacle):
+				#print("intersection")
 				if self.type == 'car':
 					frog.reset()
 					self.cache_score=0

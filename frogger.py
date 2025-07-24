@@ -19,16 +19,21 @@ from actors import *
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import math
+import sys
 
+SETUP_WIDTH = 832   # Example: double the normal width (416*2)
+SETUP_HEIGHT = 832  # Example: double the normal height (416*2)
+SETUP_GRID = 32     # Or keep the same grid size
 class DQN(nn.Module):
     def __init__(self, input_dim, output_dim):
         super(DQN, self).__init__()
         self.fc = nn.Sequential(
-            nn.Linear(input_dim, 128),
+            nn.Linear(input_dim, 512),
             nn.ReLU(),
-            nn.Linear(128, 128),
+            nn.Linear(512, 512),
             nn.ReLU(),
-            nn.Linear(128, output_dim)
+            nn.Linear(512, output_dim)
         )
 
     def forward(self, x):
@@ -39,12 +44,13 @@ g_vars['height'] = 416
 g_vars['fps'] = 30
 g_vars['grid'] = 32
 g_vars['window'] = pygame.display.set_mode( [g_vars['width'], g_vars['height']], pygame.HWSURFACE)
-
-
+g_vars['roll_interval']=50
+g_vars['config']=None
+unit=(g_vars['width']/13)
 from collections import deque
 
 class DQNAgent:
-    def __init__(self, state_dim, n_actions, gamma=0.99, epsilon=1.0, epsilon_decay=0.995, epsilon_min=0.05, lr=1e-3, batch_size=64, memory_size=10000):
+    def __init__(self, state_dim, n_actions, gamma=0.99, epsilon=1.0, epsilon_decay=0.995, epsilon_min=0.05, lr=1e-3, batch_size=64, memory_size=50000):
         self.n_actions = n_actions
         self.gamma = gamma
         self.epsilon = epsilon
@@ -102,7 +108,8 @@ class App:
 	def __init__(self):
 		pygame.init()
 		pygame.display.set_caption("Frogger")
-		
+		self.last_direction = None 
+		self.prev_pos = None
 		self.running = None
 		self.state = None
 		self.frog = None
@@ -111,44 +118,166 @@ class App:
 
 		self.clock = pygame.time.Clock()
 		self.font = pygame.font.SysFont('Courier New', 16)
+	def setup_interface(self):
 
+		for lane in self.lanes:
+			lane.obstacles = []
+		self.state = 'SETUP'
+		selected_type = 'car'  # or 'car'
+		selected_length = 2
+		selected_speed = 1
+		running = True
+		
+
+		preview_obstacle = None
+		orig_width = g_vars['width']
+		orig_height = g_vars['height']
+		orig_grid = g_vars['grid']
+		orig_window = g_vars['window']
+
+		# Set larger setup screen
+		g_vars['width'] = SETUP_WIDTH
+		g_vars['height'] = SETUP_HEIGHT
+		g_vars['grid'] = SETUP_GRID
+		g_vars['window'] = pygame.display.set_mode([SETUP_WIDTH, SETUP_HEIGHT], pygame.HWSURFACE)
+		pygame.display.set_caption("Frogger Setup")
+		font = pygame.font.SysFont('Courier New', 18)
+
+		while running:
+			g_vars['window'].fill((0, 0, 0))
+			for lane in self.lanes:
+				#print(lane)
+				for obstacle in lane.obstacles:
+					#print(obstacle)
+					pass
+				lane.draw()
+			self.frog.draw()
+			self.draw_grid()
+
+			# Draw preview obstacle at mouse position
+			mx, my = pygame.mouse.get_pos()
+			grid_x = (mx // g_vars['grid']) * g_vars['grid']
+			grid_y = (my // g_vars['grid']) * g_vars['grid']
+			color = (185, 122, 87) if selected_type == 'log' else (128, 128, 128)
+			pygame.draw.rect(
+				g_vars['window'],
+				color,
+				(grid_x, grid_y, selected_length * g_vars['grid'], g_vars['grid']),
+				2
+			)
+
+			# Draw UI text
+			info = f"Type: {selected_type.upper()} | Length: {selected_length} | Speed: {selected_speed} | [L]og [C]ar [Arrows] Size/Speed [Space] Place [Enter] Start"
+			text = font.render(info, True, (255, 255, 255))
+			g_vars['window'].blit(text, (10, g_vars['height'] - 30))
+
+			pygame.display.flip()
+
+			for event in pygame.event.get():
+
+				if event.type == QUIT:
+					pygame.quit()
+					sys.exit()
+				elif event.type == KEYDOWN:
+					if event.key == K_l:
+						selected_type = 'log'
+					elif event.key == K_c:
+						selected_type = 'car'
+					elif event.key == K_LEFT:
+						selected_length = max(1, selected_length - 1)
+					elif event.key == K_RIGHT:
+						selected_length = min(6, selected_length + 1)
+					elif event.key == K_UP:
+						selected_speed += 1
+					elif event.key == K_DOWN:
+						selected_speed -= 1
+					elif event.key == K_SPACE:
+						# Place obstacle in the lane
+						lane_idx = grid_y // g_vars['grid']
+						if 0 <= lane_idx < len(self.lanes):
+							lane = self.lanes[lane_idx]
+							lane.type = selected_type
+							color = (185, 122, 87) if selected_type == 'log' else (128, 128, 128)
+							speed = selected_speed if selected_type == 'log' else selected_speed
+							lane.obstacles.append(
+								Obstacle(
+									grid_x,
+									grid_y,
+									selected_length * g_vars['grid'],
+									g_vars['grid'],
+									speed*unit,
+									color
+								)
+							)
+					elif event.key == K_RETURN:
+						running = False  # Start the game
+				elif event.type == MOUSEBUTTONDOWN:
+					if event.button == 1:  # Left click to place
+						lane_idx = grid_y // g_vars['grid']
+						if 0 <= lane_idx < len(self.lanes):
+							lane = self.lanes[lane_idx]
+							lane.type = selected_type
+							color = (185, 122, 87) if selected_type == 'log' else (128, 128, 128)
+							speed = selected_speed if selected_type == 'log' else selected_speed
+							lane.obstacles.append(
+								Obstacle(
+									grid_x,
+									grid_y,
+									selected_length * g_vars['grid'],
+									g_vars['grid'],
+									speed*unit,
+									color
+								)
+							)
+
+		self.state = 'START'  # S
+		g_vars['width'] = orig_width
+		g_vars['height'] = orig_height
+		g_vars['grid'] = orig_grid
+		g_vars['window'] = pygame.display.set_mode([orig_width, orig_height], pygame.HWSURFACE)
+		g_vars['config']=self.lanes
+		pygame.display.set_caption("Frogger")
 	def init(self):
 		self.running = True
 		self.state = 'START'
+		self.lanes = g_vars['config']
 		
 		self.frog = Frog(g_vars['width']/2 - g_vars['grid']/2, 12 * g_vars['grid'], g_vars['grid'])
 		self.frog.attach(None)
+		unit=(g_vars['width']/13)
 		self.score = Score()
+		if(g_vars['config']==None):
+			self.lanes=[]
+			self.lanes.append( Lane( 1, c=( 50, 192, 122) ) )
+			self.lanes.append( Lane( 2, c=( 50, 192, 122) ) )
+			#self.lanes.append( Lane( 2, t='log', c=(153, 217, 234), n=5, l=2, spc=230, spd=1.2) )
+			#self.lanes.append( Lane( 3, t='log', c=(153, 217, 234), n=3, l=4, spc=180, spd=-1.6) )
+			#self.lanes.append( Lane( 4, t='log', c=(153, 217, 234), n=2, l=4, spc=140, spd=1.6) )
+			#self.lanes.append( Lane( 5, t='log', c=(153, 217, 234), n=5, l=2, spc=230, spd=-2) )
+			self.lanes.append( Lane( 3, c=(50, 192, 122) ) )
+			self.lanes.append( Lane( 4, c=(50, 192, 122) ) )
+			self.lanes.append( Lane( 5, c=(50, 192, 122) ) )
+			self.lanes.append( Lane( 6, c=(50, 192, 122) ) )
+			self.lanes.append( Lane( 7, c=(50, 192, 122) ) )
+			self.lanes.append( Lane( 8, c=(50, 192, 122) ) )
+			self.lanes.append( Lane( 9, c=(50, 192, 122) ) )
+			#self.lanes.append( Lane( 9, c=(50, 192, 122) ) )
+			
+			#self.lanes.append( Lane( 9, t='car', c=(195, 195, 195), n=1, l=13, spc=250, spd=-unit) )
 
-		self.lanes = []
-		self.lanes.append( Lane( 1, c=( 50, 192, 122) ) )
-		self.lanes.append( Lane( 2, c=( 50, 192, 122) ) )
-		#self.lanes.append( Lane( 2, t='log', c=(153, 217, 234), n=5, l=2, spc=230, spd=1.2) )
-		#self.lanes.append( Lane( 3, t='log', c=(153, 217, 234), n=3, l=4, spc=180, spd=-1.6) )
-		#self.lanes.append( Lane( 4, t='log', c=(153, 217, 234), n=2, l=4, spc=140, spd=1.6) )
-		#self.lanes.append( Lane( 5, t='log', c=(153, 217, 234), n=5, l=2, spc=230, spd=-2) )
-		self.lanes.append( Lane( 3, c=(50, 192, 122) ) )
-		self.lanes.append( Lane( 4, c=(50, 192, 122) ) )
-		self.lanes.append( Lane( 5, c=(50, 192, 122) ) )
-		self.lanes.append( Lane( 6, c=(50, 192, 122) ) )
-		self.lanes.append( Lane( 7, c=(50, 192, 122) ) )
-		self.lanes.append( Lane( 8, c=(50, 192, 122) ) )
-		#self.lanes.append( Lane( 9, c=(50, 192, 122) ) )
-		unit=g_vars['width']/13
-		self.lanes.append( Lane( 9, t='car', c=(195, 195, 195), n=1, l=13, spc=250, spd=-unit) )
+			self.lanes.append( Lane( 10, c=(50, 192, 122) ) )
+			#self.lanes.append( Lane( 11, c=(50, 192, 122) ) )
+			#self.lanes.append( Lane( 8, t='car', c=(195, 195, 195), n=0, l=2, spc=180, spd=-2) )
+			#self.lanes.append( Lane( 9, t='car', c=(195, 195, 195), n=0, l=4, spc=240, spd=-1) )
+			#self.lanes.append( Lane( 10, t='car', c=(195, 195, 195), n=0, l=2, spc=130, spd=2.5) )
+			#self.lanes.append( Lane( 7, t='car', c=(195, 195, 195), n=2, l=3, spc=140, spd=1) )
 
-		self.lanes.append( Lane( 10, c=(50, 192, 122) ) )
-		#self.lanes.append( Lane( 8, t='car', c=(195, 195, 195), n=0, l=2, spc=180, spd=-2) )
-		#self.lanes.append( Lane( 9, t='car', c=(195, 195, 195), n=0, l=4, spc=240, spd=-1) )
-		#self.lanes.append( Lane( 10, t='car', c=(195, 195, 195), n=0, l=2, spc=130, spd=2.5) )
-		#self.lanes.append( Lane( 7, t='car', c=(195, 195, 195), n=2, l=3, spc=140, spd=1) )
-
-		self.lanes.append( Lane( 11, t='car', c=(195, 195, 195), n=1, l=13, spc=195, spd=unit) )
-		self.lanes.append( Lane( 12, c=(50, 192, 122) ) )
+			self.lanes.append( Lane( 11, t='car', c=(195, 195, 195), n=0, l=12, spc=unit*4, spd=unit) )
+			self.lanes.append( Lane( 12, c=(50, 192, 122) ) )
 
 		rand_x=random.randint(0,13)
 	
-		self.frog.x=(g_vars['width']-self.frog.w)/13 * rand_x
+		self.frog.x=(g_vars['width'])/13 * rand_x
 
 	def event(self, event):
 		if event.type == QUIT:
@@ -172,12 +301,38 @@ class App:
 				self.frog.move(0, 1)
 
 	def update(self):
+		#self.frog.update()
+		self.frog.update()
+		ypos=self.frog.y/unit
+		
 		for lane in self.lanes:
 			lane.update()
+			#print(f"{lane.y/unit}")
+			yint=lane.y/unit
+			
+			for obs in lane.obstacles:
+				#print((obs.x)/unit)
+				s=f"[{(obs.x)/unit}->{(obs.x+obs.w)/unit}]"
+				#print(s)
+			#lane.update()
+			
 		
-		lane_index = self.frog.y // g_vars['grid'] - 1
+		d=f"[{(self.frog.x)/unit}->{(self.frog.x+self.frog.w)/unit}]"
+		good=(self.frog.x)/unit
+		ypos=self.frog.y/unit
+		#print(f"({good},{ypos})")
+		lane_index = self.frog.y // g_vars['grid']
+		
+		#print(lane_index)
 		if(lane_index<12):
+			#self.lanes[lane_index].check(self.frog)
+			if(len(self.lanes[lane_index].obstacles)>0):
+				pass
+				#print("size")
+
+
 			if self.lanes[lane_index].check(self.frog):
+				#print("checked")
 				self.score.lives -= 1
 				self.score.score = 0
 		inv_lane_index=11-lane_index
@@ -186,7 +341,7 @@ class App:
 		
 		#self.frog.update()
 		if (g_vars['height']-self.frog.y)//g_vars['grid'] > self.score.high_lane:
-			if self.score.high_lane == 5 or inv_lane_index==5:
+			if self.score.high_lane == 2 or inv_lane_index==2:
 				self.frog.reset()
 				self.score.update(200)
 			else: 
@@ -197,7 +352,10 @@ class App:
 			self.frog.reset()
 			self.score.reset()
 			self.state = 'START'
-		self.frog.update()
+		#self.frog.update()
+
+			
+
 
 	def draw(self):
 		g_vars['window'].fill( (0, 0, 0) )
@@ -214,7 +372,13 @@ class App:
 
 			for lane in self.lanes:
 				lane.draw()
+				#print(lane.obstacles)
+				
 			self.frog.draw()
+
+
+			self.draw_frog_arrow()
+		self.draw_grid()
 
 		pygame.display.flip()
 
@@ -248,6 +412,17 @@ class App:
 		self.cleanup()
 
 
+	def draw_grid(self):
+		grid_color = (60, 60, 60)
+		grid_size = g_vars['grid']
+		width = g_vars['width']
+		height = g_vars['height']
+		# Draw vertical lines
+		for x in range(0, width + 1, grid_size):
+			pygame.draw.line(g_vars['window'], grid_color, (x, 0), (x, height))
+		# Draw horizontal lines
+		for y in range(0, height + 1, grid_size):
+			pygame.draw.line(g_vars['window'], grid_color, (0, y), (width, y))
 
 	def get_game_state(self):
 		# Frog info
@@ -270,12 +445,33 @@ class App:
 					grid_x_2=int((obs.x + obs.w) // g_vars['grid'])
 					# print()
 					# print(grid_x)
-
+					#if(grid_x)
 					# print(grid_x_2)
+					#print(f"actual: ({(grid_x )},{(grid_x_2)})")
 					grid_y = int(obs.y // g_vars['grid'])
+
+					if(obs.speed>0):
+						if(grid_x<0):
+							grid_x=0
+
+						if(grid_x_2>12):
+							grid_x_2=12
+						#print(f"adjusted: ({(grid_x )},{(grid_x_2)})")
+						#left edge and right edge not in bounds on left side, or on right side
+						if((grid_x==0 and grid_x_2<0) or (grid_x>12 and grid_x_2==12)):
+							#do not append
+							obstacle_positions.append((-1, grid_y))
+							obstacle_positions.append((-1, grid_y))
+							#print("passed")
+							continue
+						
+					else:
+						pass
+
+
 					obstacle_positions.append((grid_x, grid_y))
 					obstacle_positions.append((grid_x_2, grid_y))
-
+					
 
 
 		# Flatten obstacle positions for the state tuple
@@ -283,20 +479,26 @@ class App:
 
 		# Return as a tuple: (frog_x, frog_y, score, lives, obs1_x, obs1_y, obs2_x, obs2_y, ...)
 		return (frog_x, frog_y, *flat_obs)
-	
+
 	def step(self, action):
-		# Map action to frog movement
+		# Save previous position before moving
+		if self.frog is not None:
+			self.prev_pos = (self.frog.x, self.frog.y)
+		# Map action to frog movement and set last_direction
 		if action == 0:
+			self.last_direction = (-1, 0)
 			self.frog.move(-1, 0)
 		elif action == 1:
+			self.last_direction = (1, 0)
 			self.frog.move(1, 0)
 		elif action == 2:
+			self.last_direction = (0, -1)
 			self.frog.move(0, -1)
 		elif action == 3:
+			self.last_direction = (0, 1)
 			self.frog.move(0, 1)
 		elif action == 4:
-			pass
-
+			self.last_direction = None  # No movement
 		self.update()
 
 	def handle_fps(self,agent):
@@ -306,6 +508,9 @@ class App:
 				
 				if event.type == KEYDOWN and event.key == K_UP and not stuck:
 					g_vars['fps']+=5
+					break
+				if event.type == KEYDOWN and event.key == K_m and not stuck: 
+					g_vars['fps']=sys.maxsize
 					break
 				if event.type == KEYDOWN and event.key == K_s and not stuck:
 					torch.save(agent.model.state_dict(),"frogger_dqn.pth")
@@ -322,7 +527,7 @@ class App:
 				if event.type == KEYDOWN and event.key == K_SPACE:
 					if(stuck==True):
 						stuck=False
-						g_vars['fps']-=30
+						g_vars['fps']=1
 
 						break
 					stuck=True
@@ -335,8 +540,55 @@ class App:
 					
 
 		
+	def draw_frog_arrow(self):
+		if self.frog is None:
+			return
+		# Arrow parameters
+		arrow_color = (255, 0, 0)
+		arrow_length = g_vars['grid'] // 2
+		arrow_width = 4
+
+		# Center of frog
+		cx = int(self.frog.x + self.frog.w // 2)
+		cy = int(self.frog.y + self.frog.h // 2)
+
+		# Determine direction
+		if self.last_direction is not None and self.last_direction != (0, 0):
+			dx, dy = self.last_direction
+		elif self.prev_pos is not None:
+			# If not moving, show where it came from
+			dx = cx - int(self.prev_pos[0] + self.frog.w // 2)
+			dy = cy - int(self.prev_pos[1] + self.frog.h // 2)
+			norm = math.hypot(dx, dy)
+			if norm != 0:
+				dx, dy = dx / norm, dy / norm
+			else:
+				dx, dy = 0, 0
+		else:
+			dx, dy = 0, 0
+
+		if dx == 0 and dy == 0:
+			return  # No direction to draw
+
+		# Arrow end point
 
 
+		half_side = self.frog.w // 2
+		sx = int(cx + dx * half_side)
+		sy = int(cy + dy * half_side)
+
+		ex = int(sx + dx * arrow_length)
+		ey = int(sy + dy * arrow_length)
+
+		pygame.draw.line(g_vars['window'], arrow_color, (sx, sy), (ex, ey), arrow_width)
+		# Draw arrowhead
+		angle = math.atan2(dy, dx)
+		head_len = 10
+		for side in [-1, 1]:
+			hx = ex - head_len * math.cos(angle + side * math.pi / 6)
+			hy = ey - head_len * math.sin(angle + side * math.pi / 6)
+			pygame.draw.line(g_vars['window'], arrow_color, (ex, ey), (hx, hy), arrow_width)
+			
 
 	def run_dqn_episode(self, agent):
 
@@ -356,10 +608,14 @@ class App:
 			state = np.array(self.get_game_state(), dtype=np.float32)
 			#print(state)
 			episode_reward=0
+			prev_hs=self.score.high_score
+
 			while self.state == 'PLAYING':
+				self.draw()
 
 				action = agent.select_action(state)
 				prev_score = self.score.score
+				prev_hs=self.score.high_score
 				self.step(action)
 				
 
@@ -368,8 +624,7 @@ class App:
 				#print(next_state)
 				#print(reward)
 				episode_hs=self.score.high_score
-				self.update()
-				self.draw()
+				#self.update()
 				done = self.score.lives == 0
 				reward=self.score.score
 				agent.store(state, action, reward, next_state, done)
@@ -379,10 +634,10 @@ class App:
 				agent.train()
 
 				if(self.score.score>0):
-					self.score.score-=1
+					self.score.score-=3
 
 				self.handle_fps(agent)
-				
+				#self.draw()
 				#print(g_vars['fps'])
 				self.clock.tick(g_vars['fps'])
 				if(steps_done % 500) ==0:
@@ -392,20 +647,24 @@ class App:
 				if done:
 					break
 			agent.decay_epsilon()
-			if((ep+1)%250==0):
-				percentage=effective/ep
-				percent_roll=rolling_effective/250
-				print("======================")
-				print(f"Episode {ep+1}: Effective: {effective} out of {ep} total = {percentage:.3f}%, Rolling Average: {rolling_effective} in last 250 = {percent_roll:.3f}%")
-				print(f"Average High Score={(total_high_score/ep):.3f}, Rolling High Score={(rolling_high_score/250):.3f}")
-				print("======================")
-				rolling_effective=0
-				rolling_high_score=0
-			if(episode_hs!=0):
+			#print(f"previous hs:{prev_hs} vs: episode_hs{episode_hs}")
+			if(ep==0):
+				continue
+			if(prev_hs!=0):
 				effective+=1
 				total_high_score+=episode_hs
 				rolling_high_score+=episode_hs
 				rolling_effective+=1
+			if((ep)%g_vars['roll_interval']==0):
+				percentage=effective/ep
+				percent_roll=rolling_effective/g_vars['roll_interval']
+				print("======================")
+				print(f"Episode {ep}: Effective: {effective} out of {ep} total = {percentage:.3f}%, Rolling Average: {rolling_effective} in last {g_vars['roll_interval']} = {percent_roll:.3f}%")
+				print(f"Average High Score={(total_high_score/ep):.3f}, Rolling High Score={(rolling_high_score/g_vars['roll_interval']):.3f}")
+				print("======================")
+				rolling_effective=0
+				rolling_high_score=0
+
 				#print(f"Episode {ep+1}: Total Reward (Score) = {episode_reward}, Epsilon = {agent.epsilon:.3f}, High Score = {episode_hs}")
 
 			
@@ -416,7 +675,10 @@ if __name__ == "__main__":
 
 	app = App()
 	app.init()
+
+	app.setup_interface()
 	
+	#app.execute()
 	
 	state_dim = len(app.get_game_state())
 	agent= DQNAgent(state_dim=state_dim, n_actions=5)  # 4 actions: left, right, up, down
@@ -426,4 +688,3 @@ if __name__ == "__main__":
 	# for ep in range(episodes):
 	# 	#reward = app.run_dqn_episode(agent,rewards_per_episode)
 	# 	print(f"Episode {ep+1}: Total Reward (Score) = {reward}, Epsilon = {agent.epsilon:.3f}")
-#app.execute()

@@ -1,0 +1,17 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Frogger",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/frogger.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONUNBUFFERED": "1"
+            },
+            "args": []
+        }
+    ]
+}
