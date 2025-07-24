@@ -1,10 +1,6 @@
-# Frogger
+# Frogger-AI
 
-Frogger is a simple video game created in 1981 in partnership between SEGA and Konami.
-
-The goal is to move the frog up to the safety zone, avoiding the cars and jumping over the logs.
-
-This code was created following the videos from the [Coding Train](https://www.youtube.com/user/shiffman) channel.
+This is a fork of existing frogger project by [rhrlima](https://github.com/rhrlima) that you can check out [Here](https://github.com/rhrlima/frogger). My goal was to use the existing code and add logic for deep learning to allow an agent learn to avoid obstacles and score points. I have made simplifications to the state of the game, such as making it grid based to allow discrete positions, which significantly shrinks the range of possible inputs to be more understandable by a neural net. This makes it less "human-playable" but easier for a machine learning algorithim to pick up. I made each episode a "life" aka until a frog dies. I plan to add more features such as logs, statistic tracking, more stage customization and user control as well as model improvement methods such as fine tuning.
 
 ## Getting Started
 
