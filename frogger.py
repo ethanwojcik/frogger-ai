@@ -146,15 +146,11 @@ class App:
 		while running:
 			g_vars['window'].fill((0, 0, 0))
 			for lane in self.lanes:
-				#print(lane)
-				for obstacle in lane.obstacles:
-					#print(obstacle)
-					pass
+
 				lane.draw()
 			self.frog.draw()
 			self.draw_grid()
 
-			# Draw preview obstacle at mouse position
 			mx, my = pygame.mouse.get_pos()
 			grid_x = (mx // g_vars['grid']) * g_vars['grid']
 			grid_y = (my // g_vars['grid']) * g_vars['grid']
@@ -166,8 +162,8 @@ class App:
 				2
 			)
 
-			# Draw UI text
-			info = f"Type: {selected_type.upper()} | Length: {selected_length} | Speed: {selected_speed} | [L]og [C]ar [Arrows] Size/Speed [Space] Place [Enter] Start"
+			
+			info = f"Type: {selected_type.upper()} | Length: {selected_length} | Speed: {selected_speed} | [L]og [C]ar [Arrows] Size/Speed [Enter] Start"
 			text = font.render(info, True, (255, 255, 255))
 			g_vars['window'].blit(text, (10, g_vars['height'] - 30))
 
@@ -186,7 +182,7 @@ class App:
 					elif event.key == K_LEFT:
 						selected_length = max(1, selected_length - 1)
 					elif event.key == K_RIGHT:
-						selected_length = min(6, selected_length + 1)
+						selected_length = min(31, selected_length + 1)
 					elif event.key == K_UP:
 						selected_speed += 1
 					elif event.key == K_DOWN:
@@ -260,17 +256,21 @@ class App:
 			self.lanes.append( Lane( 6, c=(50, 192, 122) ) )
 			self.lanes.append( Lane( 7, c=(50, 192, 122) ) )
 			self.lanes.append( Lane( 8, c=(50, 192, 122) ) )
-			self.lanes.append( Lane( 9, c=(50, 192, 122) ) )
+			#self.lanes.append( Lane( 9, c=(50, 192, 122) ) )
 			#self.lanes.append( Lane( 9, c=(50, 192, 122) ) )
 			
 			#self.lanes.append( Lane( 9, t='car', c=(195, 195, 195), n=1, l=13, spc=250, spd=-unit) )
 
-			self.lanes.append( Lane( 10, c=(50, 192, 122) ) )
+			#self.lanes.append( Lane( 10, c=(50, 192, 122) ) )
+			self.lanes.append( Lane( 10, t='car', c=(195, 195, 195), n=0, l=12, spc=unit*4, spd=unit) )
+
 			#self.lanes.append( Lane( 11, c=(50, 192, 122) ) )
 			#self.lanes.append( Lane( 8, t='car', c=(195, 195, 195), n=0, l=2, spc=180, spd=-2) )
 			#self.lanes.append( Lane( 9, t='car', c=(195, 195, 195), n=0, l=4, spc=240, spd=-1) )
 			#self.lanes.append( Lane( 10, t='car', c=(195, 195, 195), n=0, l=2, spc=130, spd=2.5) )
 			#self.lanes.append( Lane( 7, t='car', c=(195, 195, 195), n=2, l=3, spc=140, spd=1) )
+			self.lanes.append( Lane( 9, t='car', c=(195, 195, 195), n=0, l=12, spc=unit*4, spd=unit) )
+
 
 			self.lanes.append( Lane( 11, t='car', c=(195, 195, 195), n=0, l=12, spc=unit*4, spd=unit) )
 			self.lanes.append( Lane( 12, c=(50, 192, 122) ) )
@@ -341,7 +341,7 @@ class App:
 		
 		#self.frog.update()
 		if (g_vars['height']-self.frog.y)//g_vars['grid'] > self.score.high_lane:
-			if self.score.high_lane == 2 or inv_lane_index==2:
+			if self.score.high_lane == 4 or inv_lane_index==4:
 				self.frog.reset()
 				self.score.update(200)
 			else: 
@@ -419,7 +419,7 @@ class App:
 		height = g_vars['height']
 		# Draw vertical lines
 		for x in range(0, width + 1, grid_size):
-			pygame.draw.line(g_vars['window'], grid_color, (x, 0), (x, height))
+			pygame.draw.line(g_vars['window'], grid_color, (x, int(unit)), (x, height))
 		# Draw horizontal lines
 		for y in range(0, height + 1, grid_size):
 			pygame.draw.line(g_vars['window'], grid_color, (0, y), (width, y))
