@@ -134,6 +134,7 @@ class App:
 		orig_height = g_vars['height']
 		orig_grid = g_vars['grid']
 		orig_window = g_vars['window']
+		finish_line_row = None  # Track the finish line row
 
 		# Set larger setup screen
 		g_vars['width'] = SETUP_WIDTH
@@ -150,7 +151,13 @@ class App:
 				lane.draw()
 			self.frog.draw()
 			self.draw_grid()
-
+			if finish_line_row is not None:
+				pygame.draw.rect(
+					g_vars['window'],
+					(255, 0, 0),
+					(0, finish_line_row * g_vars['grid'], g_vars['width'], g_vars['grid']),
+					0
+				)
 			mx, my = pygame.mouse.get_pos()
 			grid_x = (mx // g_vars['grid']) * g_vars['grid']
 			grid_y = (my // g_vars['grid']) * g_vars['grid']
@@ -205,6 +212,9 @@ class App:
 									color
 								)
 							)
+					elif event.key == K_f:
+						# Set finish line to the row under mouse
+						finish_line_row = grid_y // g_vars['grid']
 					elif event.key == K_RETURN:
 						running = False  # Start the game
 				elif event.type == MOUSEBUTTONDOWN:
@@ -225,6 +235,8 @@ class App:
 									color
 								)
 							)
+		self.finish_line_row = finish_line_row
+
 
 		self.state = 'START'  # S
 		g_vars['width'] = orig_width
@@ -233,6 +245,7 @@ class App:
 		g_vars['window'] = pygame.display.set_mode([orig_width, orig_height], pygame.HWSURFACE)
 		g_vars['config']=self.lanes
 		pygame.display.set_caption("Frogger")
+		
 	def init(self):
 		self.running = True
 		self.state = 'START'
@@ -245,17 +258,17 @@ class App:
 		if(g_vars['config']==None):
 			self.lanes=[]
 			self.lanes.append( Lane( 1, c=( 50, 192, 122) ) )
-			self.lanes.append( Lane( 2, c=( 50, 192, 122) ) )
-			#self.lanes.append( Lane( 2, t='log', c=(153, 217, 234), n=5, l=2, spc=230, spd=1.2) )
-			#self.lanes.append( Lane( 3, t='log', c=(153, 217, 234), n=3, l=4, spc=180, spd=-1.6) )
-			#self.lanes.append( Lane( 4, t='log', c=(153, 217, 234), n=2, l=4, spc=140, spd=1.6) )
-			#self.lanes.append( Lane( 5, t='log', c=(153, 217, 234), n=5, l=2, spc=230, spd=-2) )
-			self.lanes.append( Lane( 3, c=(50, 192, 122) ) )
-			self.lanes.append( Lane( 4, c=(50, 192, 122) ) )
-			self.lanes.append( Lane( 5, c=(50, 192, 122) ) )
+			#self.lanes.append( Lane( 2, c=( 50, 192, 122) ) )
+			self.lanes.append( Lane( 2, t='log', c=(153, 217, 234), n=0, l=2, spc=230, spd=1.2) )
+			self.lanes.append( Lane( 3, t='log', c=(153, 217, 234), n=0, l=4, spc=180, spd=-1.6) )
+			self.lanes.append( Lane( 4, t='log', c=(153, 217, 234), n=0, l=4, spc=140, spd=1.6) )
+			self.lanes.append( Lane( 5, t='log', c=(153, 217, 234), n=0, l=2, spc=230, spd=-2) )
+			#self.lanes.append( Lane( 3, c=(50, 192, 122) ) )
+			#self.lanes.append( Lane( 4, c=(50, 192, 122) ) )
+			#self.lanes.append( Lane( 5, c=(50, 192, 122) ) )
 			self.lanes.append( Lane( 6, c=(50, 192, 122) ) )
 			self.lanes.append( Lane( 7, c=(50, 192, 122) ) )
-			self.lanes.append( Lane( 8, c=(50, 192, 122) ) )
+			#self.lanes.append( Lane( 8, c=(50, 192, 122) ) )
 			#self.lanes.append( Lane( 9, c=(50, 192, 122) ) )
 			#self.lanes.append( Lane( 9, c=(50, 192, 122) ) )
 			
@@ -263,6 +276,7 @@ class App:
 
 			#self.lanes.append( Lane( 10, c=(50, 192, 122) ) )
 			self.lanes.append( Lane( 10, t='car', c=(195, 195, 195), n=0, l=12, spc=unit*4, spd=unit) )
+			self.lanes.append( Lane( 8, t='car', c=(195, 195, 195), n=0, l=12, spc=unit*4, spd=unit) )
 
 			#self.lanes.append( Lane( 11, c=(50, 192, 122) ) )
 			#self.lanes.append( Lane( 8, t='car', c=(195, 195, 195), n=0, l=2, spc=180, spd=-2) )
@@ -301,60 +315,42 @@ class App:
 				self.frog.move(0, 1)
 
 	def update(self):
-		#self.frog.update()
 		self.frog.update()
-		ypos=self.frog.y/unit
-		
+		ypos = self.frog.y / unit
+
 		for lane in self.lanes:
 			lane.update()
-			#print(f"{lane.y/unit}")
-			yint=lane.y/unit
-			
-			for obs in lane.obstacles:
-				#print((obs.x)/unit)
-				s=f"[{(obs.x)/unit}->{(obs.x+obs.w)/unit}]"
-				#print(s)
-			#lane.update()
-			
-		
-		d=f"[{(self.frog.x)/unit}->{(self.frog.x+self.frog.w)/unit}]"
-		good=(self.frog.x)/unit
-		ypos=self.frog.y/unit
-		#print(f"({good},{ypos})")
+
 		lane_index = self.frog.y // g_vars['grid']
-		
-		#print(lane_index)
-		if(lane_index<12):
-			#self.lanes[lane_index].check(self.frog)
-			if(len(self.lanes[lane_index].obstacles)>0):
-				pass
-				#print("size")
 
-
-			if self.lanes[lane_index].check(self.frog):
-				#print("checked")
-				self.score.lives -= 1
-				self.score.score = 0
-		inv_lane_index=11-lane_index
-		#print("lane_index:",inv_lane_index)
-		#print("high_lane",self.score.high_lane)
-		
-		#self.frog.update()
-		if (g_vars['height']-self.frog.y)//g_vars['grid'] > self.score.high_lane:
-			if self.score.high_lane == 4 or inv_lane_index==4:
+		# Check finish line
+		if hasattr(self, 'finish_line_row') and self.finish_line_row is not None:
+			if lane_index == self.finish_line_row:
 				self.frog.reset()
 				self.score.update(200)
-			else: 
+				self.score.high_lane = (g_vars['height'] - self.frog.y) // g_vars['grid']
+				return
+
+		if lane_index < 12:
+			if len(self.lanes[lane_index].obstacles) > 0:
+				pass
+			if self.lanes[lane_index].check(self.frog):
+				self.score.lives -= 1
+				self.score.score = 0
+
+		inv_lane_index = 11 - lane_index
+		if (g_vars['height'] - self.frog.y) // g_vars['grid'] > self.score.high_lane:
+			if self.score.high_lane == 11 or inv_lane_index == 11:
+				self.frog.reset()
+				self.score.update(200)
+			else:
 				self.score.update(10)
-			self.score.high_lane = (g_vars['height']-self.frog.y)//g_vars['grid']
+			self.score.high_lane = (g_vars['height'] - self.frog.y) // g_vars['grid']
 
 		if self.score.lives == 0:
 			self.frog.reset()
 			self.score.reset()
 			self.state = 'START'
-		#self.frog.update()
-
-			
 
 
 	def draw(self):
