@@ -26,14 +26,14 @@ SETUP_WIDTH = 832   # Example: double the normal width (416*2)
 SETUP_HEIGHT = 832  # Example: double the normal height (416*2)
 SETUP_GRID = 32     # Or keep the same grid size
 class DQN(nn.Module):
-    def __init__(self, input_dim, output_dim):
+    def __init__(self, input_dim, output_dim,inner_layer_size):
         super(DQN, self).__init__()
         self.fc = nn.Sequential(
-            nn.Linear(input_dim, 512),
+            nn.Linear(input_dim, inner_layer_size),
             nn.ReLU(),
-            nn.Linear(512, 512),
+            nn.Linear(inner_layer_size, inner_layer_size),
             nn.ReLU(),
-            nn.Linear(512, output_dim)
+            nn.Linear(inner_layer_size, output_dim)
         )
 
     def forward(self, x):
@@ -50,7 +50,7 @@ unit=(g_vars['width']/13)
 from collections import deque
 
 class DQNAgent:
-    def __init__(self, state_dim, n_actions, gamma=0.99, epsilon=1.0, epsilon_decay=0.995, epsilon_min=0.05, lr=1e-3, batch_size=64, memory_size=50000):
+    def __init__(self, state_dim, n_actions, gamma=0.99, epsilon=1.0, epsilon_decay=0.995, epsilon_min=0.05, lr=1e-3, batch_size=64, memory_size=50000,inner_layer_size=512):
         self.n_actions = n_actions
         self.gamma = gamma
         self.epsilon = epsilon
@@ -59,8 +59,8 @@ class DQNAgent:
         self.batch_size = batch_size
         self.memory = deque(maxlen=memory_size)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.model = DQN(state_dim, n_actions).to(self.device)
-        self.target_net = DQN(state_dim, n_actions).to(self.device)
+        self.model = DQN(state_dim, n_actions,inner_layer_size).to(self.device)
+        self.target_net = DQN(state_dim, n_actions,inner_layer_size).to(self.device)
         self.target_net.load_state_dict(self.model.state_dict())
         self.target_net.eval()
         self.optimizer = optim.Adam(self.model.parameters(), lr=lr)
@@ -118,6 +118,85 @@ class App:
 
 		self.clock = pygame.time.Clock()
 		self.font = pygame.font.SysFont('Courier New', 16)
+	def hyperparameter_setup(self):
+		"""
+		Display a simple setup screen to select DQN hyperparameters before board setup.
+		"""
+		params = {
+			"gamma": 0.99,
+			"epsilon": 1.0,
+			"epsilon_decay": 0.995,
+			"epsilon_min": 0.05,
+			"lr": 1e-3,
+			"batch_size": 64,
+			"memory_size": 50000,
+			"inner_layer_size": 512  # <-- Add this line for DQN layer size
+		}
+		param_keys = list(params.keys())
+		selected = 0
+		running = True
+
+		font = pygame.font.SysFont('Courier New', 18)
+		g_vars['window'] = pygame.display.set_mode([500, 400], pygame.HWSURFACE)
+		pygame.display.set_caption("DQN Hyperparameter Setup")
+
+		while running:
+			g_vars['window'].fill((20, 20, 20))
+			title = font.render("Select DQN Hyperparameters", True, (255, 255, 255))
+			g_vars['window'].blit(title, (50, 30))
+
+			for i, key in enumerate(param_keys):
+				color = (255, 255, 0) if i == selected else (200, 200, 200)
+				value = params[key]
+				line = f"{key}: {value}"
+				text = font.render(line, True, color)
+				g_vars['window'].blit(text, (50, 80 + i * 25))
+
+			info = font.render("Arrows: Select/Change | Enter: Confirm", True, (180, 180, 180))
+			g_vars['window'].blit(info, (50, 350))
+			pygame.display.flip()
+
+			for event in pygame.event.get():
+				if event.type == QUIT:
+					pygame.quit()
+					sys.exit()
+				elif event.type == KEYDOWN:
+					if event.key == K_UP:
+						selected = (selected - 1) % len(param_keys)
+					elif event.key == K_DOWN:
+						selected = (selected + 1) % len(param_keys)
+					elif event.key == K_LEFT:
+						key = param_keys[selected]
+						# Decrease value
+						if key in ["gamma", "epsilon", "epsilon_decay", "lr"]:
+							params[key] = round(max(0.0001, params[key] - 0.01), 5)
+						elif key in ["epsilon_min"]:
+							params[key] = round(max(0.0, params[key] - 0.01), 5)
+						elif key in ["batch_size"]:
+							params[key] = max(1, params[key] - 1)
+						elif key in ["memory_size"]:
+							params[key] = max(1000, params[key] - 1000)
+						elif key in ["inner_layer_size"]:
+							params[key] = max(16, params[key] - 16)
+					elif event.key == K_RIGHT:
+						key = param_keys[selected]
+						# Increase value
+						if key in ["gamma", "epsilon", "epsilon_decay", "lr"]:
+							params[key] = round(params[key] + 0.01, 5)
+						elif key in ["epsilon_min"]:
+							params[key] = round(params[key] + 0.01, 5)
+						elif key in ["batch_size"]:
+							params[key] = params[key] + 1
+						elif key in ["memory_size"]:
+							params[key] = params[key] + 1000
+						elif key in ["inner_layer_size"]:
+							params[key] = params[key] + 16
+					elif event.key == K_RETURN:
+						running = False
+
+		return params
+
+
 	def setup_interface(self):
 
 		for lane in self.lanes:
@@ -195,7 +274,7 @@ class App:
 					elif event.key == K_DOWN:
 						selected_speed -= 1
 					elif event.key == K_SPACE:
-						# Place obstacle in the lane
+						
 						lane_idx = grid_y // g_vars['grid']
 						if 0 <= lane_idx < len(self.lanes):
 							lane = self.lanes[lane_idx]
@@ -213,12 +292,12 @@ class App:
 								)
 							)
 					elif event.key == K_f:
-						# Set finish line to the row under mouse
+						
 						finish_line_row = grid_y // g_vars['grid']
 					elif event.key == K_RETURN:
-						running = False  # Start the game
+						running = False  
 				elif event.type == MOUSEBUTTONDOWN:
-					if event.button == 1:  # Left click to place
+					if event.button == 1: 
 						lane_idx = grid_y // g_vars['grid']
 						if 0 <= lane_idx < len(self.lanes):
 							lane = self.lanes[lane_idx]
@@ -323,7 +402,7 @@ class App:
 
 		lane_index = self.frog.y // g_vars['grid']
 
-		# Check finish line
+		
 		if hasattr(self, 'finish_line_row') and self.finish_line_row is not None:
 			if lane_index == self.finish_line_row:
 				self.frog.reset()
@@ -671,13 +750,15 @@ if __name__ == "__main__":
 
 	app = App()
 	app.init()
-
+	
+	params = app.hyperparameter_setup()
+	print(params)
 	app.setup_interface()
 	
 	#app.execute()
 	
 	state_dim = len(app.get_game_state())
-	agent= DQNAgent(state_dim=state_dim, n_actions=5)  # 4 actions: left, right, up, down
+	agent= DQNAgent(state_dim=state_dim, n_actions=5,gamma=params['gamma'],epsilon=params['epsilon'],epsilon_decay=params['epsilon_decay'],epsilon_min=params['epsilon_min'],lr=params['lr'],batch_size=params['batch_size'],memory_size=params['memory_size'],inner_layer_size=params['inner_layer_size'])  # 4 actions: left, right, up, down
 	#agent.load("frogger_dqn.pth")
 	app.run_dqn_episode(agent)
 	app.cleanup()
