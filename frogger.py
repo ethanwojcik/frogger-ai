@@ -8,7 +8,9 @@ Author: Ricardo Henrique Remes de Lima <https://www.github.com/rhrlima>
 Source: https://www.youtube.com/user/shiffman
 """
 
+from queue import Queue
 import random
+import threading
 
 import pygame
 import numpy as np
@@ -21,6 +23,8 @@ import torch.nn as nn
 import torch.optim as optim
 import math
 import sys
+
+from stats import stats_plotter
 
 SETUP_WIDTH = 832   # Example: double the normal width (416*2)
 SETUP_HEIGHT = 832  # Example: double the normal height (416*2)
@@ -46,6 +50,7 @@ g_vars['grid'] = 32
 g_vars['window'] = pygame.display.set_mode( [g_vars['width'], g_vars['height']], pygame.HWSURFACE)
 g_vars['roll_interval']=50
 g_vars['config']=None
+stats_queue= Queue()
 unit=(g_vars['width']/13)
 from collections import deque
 
@@ -679,6 +684,7 @@ class App:
 			self.init()
 			self.state = 'PLAYING'
 			total_reward = 0
+
 			episode_hs=0
 			state = np.array(self.get_game_state(), dtype=np.float32)
 			#print(state)
@@ -739,6 +745,12 @@ class App:
 				print("======================")
 				rolling_effective=0
 				rolling_high_score=0
+			statObj={'episode':ep,
+			'avg_high_score':total_high_score/ep,
+			'rolling_high_score':rolling_high_score/g_vars['roll_interval'],
+			'effective_percentage':effective/ep,
+			}
+			stats_queue.put(statObj)
 
 				#print(f"Episode {ep+1}: Total Reward (Score) = {episode_reward}, Epsilon = {agent.epsilon:.3f}, High Score = {episode_hs}")
 
@@ -751,8 +763,9 @@ if __name__ == "__main__":
 	app = App()
 	app.init()
 	
+	
 	params = app.hyperparameter_setup()
-	print(params)
+	#print(params)
 	app.setup_interface()
 	
 	#app.execute()
@@ -760,7 +773,14 @@ if __name__ == "__main__":
 	state_dim = len(app.get_game_state())
 	agent= DQNAgent(state_dim=state_dim, n_actions=5,gamma=params['gamma'],epsilon=params['epsilon'],epsilon_decay=params['epsilon_decay'],epsilon_min=params['epsilon_min'],lr=params['lr'],batch_size=params['batch_size'],memory_size=params['memory_size'],inner_layer_size=params['inner_layer_size'])  # 4 actions: left, right, up, down
 	#agent.load("frogger_dqn.pth")
-	app.run_dqn_episode(agent)
+	
+	t1 = threading.Thread(target=app.run_dqn_episode, args=(agent,))
+	t2 = threading.Thread(target=stats_plotter, args=(stats_queue,))
+	t1.start()
+	t2.start()
+	
+	t2.join()
+	t1.join()
 	app.cleanup()
 	# for ep in range(episodes):
 	# 	#reward = app.run_dqn_episode(agent,rewards_per_episode)
