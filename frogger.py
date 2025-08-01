@@ -11,6 +11,7 @@ Source: https://www.youtube.com/user/shiffman
 from queue import Queue
 import random
 import threading
+import time
 
 import pygame
 import numpy as np
@@ -23,8 +24,12 @@ import torch.nn as nn
 import torch.optim as optim
 import math
 import sys
+import matplotlib
+matplotlib.use('TkAgg')  # or 'Agg' for no GUI, or 'GTK3Agg', etc.
+import matplotlib.pyplot as plt
 
-from stats import stats_plotter
+import numpy as np
+
 
 SETUP_WIDTH = 832   # Example: double the normal width (416*2)
 SETUP_HEIGHT = 832  # Example: double the normal height (416*2)
@@ -753,7 +758,42 @@ class App:
 			stats_queue.put(statObj)
 
 				#print(f"Episode {ep+1}: Total Reward (Score) = {episode_reward}, Epsilon = {agent.epsilon:.3f}, High Score = {episode_hs}")
+def stats_plotter(stats_queue):
 
+	plt.ion()  # Enable interactive mode
+	fig, ax = plt.subplots(figsize=(8, 5))
+	plt.title("Frogger Training Stats")
+	plt.xlabel("Episode")
+	plt.ylabel("Score / Effectiveness")
+	episodes = []
+	avg_high_scores = []
+	rolling_high_scores = []
+	effective_percentages = []
+
+	def update():
+		while(True):
+			stats = stats_queue.get()
+			#print(stats)
+			episodes.append(stats['episode'])
+			avg_high_scores.append(stats['avg_high_score'])
+			rolling_high_scores.append(stats['rolling_high_score'])
+			#effective_percentages.append(stats['effective_percentage'])
+			ax.clear()
+			ax.plot(episodes, avg_high_scores, label="Avg High Score", color='cyan')
+			ax.plot(episodes, rolling_high_scores, label="Rolling High Score", color='orange')
+			#ax.plot(episodes, effective_percentages, label="Effectiveness", color='green')
+			ax.set_title("Frogger Training Stats")
+			ax.set_xlabel("Episode")
+			ax.set_ylabel("Score")
+			ax.legend()
+
+			fig.canvas.draw()
+			fig.canvas.flush_events()
+			time.sleep(0.03) 
+
+
+
+	update()
 			
 if __name__ == "__main__":
 
@@ -775,11 +815,8 @@ if __name__ == "__main__":
 	#agent.load("frogger_dqn.pth")
 	
 	t1 = threading.Thread(target=app.run_dqn_episode, args=(agent,))
-	t2 = threading.Thread(target=stats_plotter, args=(stats_queue,))
 	t1.start()
-	t2.start()
-	
-	t2.join()
+	stats_plotter(stats_queue)
 	t1.join()
 	app.cleanup()
 	# for ep in range(episodes):
