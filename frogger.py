@@ -55,6 +55,7 @@ g_vars['grid'] = 32
 g_vars['window'] = pygame.display.set_mode( [g_vars['width'], g_vars['height']], pygame.HWSURFACE)
 g_vars['roll_interval']=50
 g_vars['config']=None
+
 stats_queue= Queue()
 unit=(g_vars['width']/13)
 from collections import deque
@@ -183,11 +184,11 @@ class App:
 						elif key in ["epsilon_min"]:
 							params[key] = round(max(0.0, params[key] - 0.01), 5)
 						elif key in ["batch_size"]:
-							params[key] = max(1, params[key] - 1)
+							params[key] = max(1, int(params[key]/2))
 						elif key in ["memory_size"]:
 							params[key] = max(1000, params[key] - 1000)
 						elif key in ["inner_layer_size"]:
-							params[key] = max(16, params[key] - 16)
+							params[key] = max(16, int(params[key]/2))
 					elif event.key == K_RIGHT:
 						key = param_keys[selected]
 						# Increase value
@@ -196,11 +197,11 @@ class App:
 						elif key in ["epsilon_min"]:
 							params[key] = round(params[key] + 0.01, 5)
 						elif key in ["batch_size"]:
-							params[key] = params[key] + 1
+							params[key] = int(params[key]*2)
 						elif key in ["memory_size"]:
 							params[key] = params[key] + 1000
 						elif key in ["inner_layer_size"]:
-							params[key] = params[key] + 16
+							params[key] = int (params[key]*2)
 					elif event.key == K_RETURN:
 						running = False
 
@@ -764,7 +765,7 @@ def stats_plotter(stats_queue):
 	fig, ax = plt.subplots(figsize=(8, 5))
 	plt.title("Frogger Training Stats")
 	plt.xlabel("Episode")
-	plt.ylabel("Score / Effectiveness")
+	plt.ylabel("Score")
 	episodes = []
 	avg_high_scores = []
 	rolling_high_scores = []
@@ -778,18 +779,20 @@ def stats_plotter(stats_queue):
 			avg_high_scores.append(stats['avg_high_score'])
 			rolling_high_scores.append(stats['rolling_high_score'])
 			#effective_percentages.append(stats['effective_percentage'])
-			ax.clear()
-			ax.plot(episodes, avg_high_scores, label="Avg High Score", color='cyan')
-			ax.plot(episodes, rolling_high_scores, label="Rolling High Score", color='orange')
-			#ax.plot(episodes, effective_percentages, label="Effectiveness", color='green')
-			ax.set_title("Frogger Training Stats")
-			ax.set_xlabel("Episode")
-			ax.set_ylabel("Score")
-			ax.legend()
+			if(len(episodes)%g_vars['roll_interval']==0):
 
-			fig.canvas.draw()
-			fig.canvas.flush_events()
-			time.sleep(0.03) 
+				ax.clear()
+				ax.plot(episodes, avg_high_scores, label="Avg High Score", color='cyan')
+				ax.plot(episodes, rolling_high_scores, label="Rolling High Score", color='orange')
+				#ax.plot(episodes, effective_percentages, label="Effectiveness", color='green')
+				ax.set_title("Frogger Training Stats")
+				ax.set_xlabel("Episode")
+				ax.set_ylabel("Score")
+				ax.legend()
+
+				fig.canvas.draw()
+				fig.canvas.flush_events()
+				#time.sleep(0.03) 
 
 
 
