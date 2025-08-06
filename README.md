@@ -18,10 +18,11 @@ This code requires Python3 and Pygame to run.
 
 * [Pygame](https://www.pygame.org/news) - The Pygame library website.
 
-Install pygame by running the following:
-
+Install packages by running the following
 ```
-pip install requirements.txt
+sudo apt-get install python3-tk
+pip install -r requirements.txt
+
 ```
 
 ### Running
