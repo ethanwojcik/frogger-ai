@@ -22,7 +22,6 @@ Install packages by running the following
 ```
 sudo apt-get install python3-tk
 pip install -r requirements.txt
-
 ```
 
 ### Running
