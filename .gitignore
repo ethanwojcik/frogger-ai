@@ -25,3 +25,4 @@ wheels/
 frogger_dqn.pth
 frogger_board_config.json
 configs/*
+configs/
