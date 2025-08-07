@@ -12,11 +12,12 @@ from queue import Queue
 import random
 import threading
 import time
-
+import json
+import os
 import pygame
 import numpy as np
 from pygame.locals import *
-
+import glob
 from actors import *
 
 import torch
@@ -252,16 +253,91 @@ class App:
 		orig_height = g_vars['height']
 		orig_grid = g_vars['grid']
 		orig_window = g_vars['window']
-		finish_line_row = None  # Track the finish line row
-
-		# Set larger setup screen
+		finish_line_row = None  
+		selected_config=0
+		
 		g_vars['width'] = SETUP_WIDTH
 		g_vars['height'] = SETUP_HEIGHT
 		g_vars['grid'] = SETUP_GRID
 		g_vars['window'] = pygame.display.set_mode([SETUP_WIDTH, SETUP_HEIGHT], pygame.HWSURFACE)
 		pygame.display.set_caption("Frogger Setup")
 		font = pygame.font.SysFont('Courier New', 18)
+		config_dir = "configs"
+		os.makedirs(config_dir, exist_ok=True)
+		config_files = sorted(glob.glob(os.path.join(config_dir, "frogger_board_config_*.json")))
+		config_index = 0 if config_files else -1
 
+		def get_config_filename(idx):
+			return os.path.join(config_dir, f"frogger_board_config_{idx}.json")
+
+		def save_new_config():
+			
+			next_idx = len(config_files)
+			filename = get_config_filename(next_idx)
+			save_config_to_file(filename)
+			config_files.append(filename)
+			print(f"Saved new config: {filename}")
+
+		def save_config():
+			
+			if config_index >= 0 and config_index < len(config_files):
+				filename = config_files[config_index]
+			else:
+				filename = get_config_filename(0)
+			save_config_to_file(filename)
+			print(f"Saved config: {filename}")
+
+		def save_config_to_file(filename):
+			config = {
+				"finish_line_row": finish_line_row,
+				"lanes": []
+			}
+			for lane in self.lanes:
+				lane_data = {
+					"type": lane.type,
+					"color": lane.color,
+					"obstacles": []
+				}
+				for obs in lane.obstacles:
+					lane_data["obstacles"].append({
+						"x": obs.x,
+						"y": obs.y,
+						"w": obs.w,
+						"h": obs.h,
+						"speed": obs.speed,
+						"color": obs.color
+					})
+				config["lanes"].append(lane_data)
+			with open(filename, "w") as f:
+				json.dump(config, f)
+			print(f"Board config saved to {filename}")
+
+		def load_config(idx):
+			nonlocal finish_line_row
+			if idx < 0 or idx >= len(config_files):
+				print("No config file at index", idx)
+				return
+			filename = config_files[idx]
+			with open(filename, "r") as f:
+				config = json.load(f)
+			finish_line_row = config.get("finish_line_row", None)
+			lanes_data = config.get("lanes", [])
+			for lane, lane_data in zip(self.lanes, lanes_data):
+				lane.type = lane_data.get("type", lane.type)
+				lane.color = tuple(lane_data.get("color", lane.color))
+				lane.obstacles = []
+				for obs_data in lane_data.get("obstacles", []):
+					lane.obstacles.append(
+						Obstacle(
+							obs_data["x"],
+							obs_data["y"],
+							obs_data["w"],
+							obs_data["h"],
+							obs_data["speed"],
+							tuple(obs_data["color"])
+						)
+					)
+			print(f"Board config loaded from {filename}")
 		while running:
 			g_vars['window'].fill((0, 0, 0))
 			for lane in self.lanes:
@@ -287,10 +363,15 @@ class App:
 				2
 			)
 
-			
+			info2 = f"[N]ext [P]rev [V]iew [A]dd(new) [S]ave(overwrite)"
+			info3 = f"Current Config Selected: {selected_config}"
 			info = f"Type: {selected_type.upper()} | Length: {selected_length} | Speed: {selected_speed} | [L]og [C]ar [Arrows] Size/Speed [Enter] Start"
 			text = font.render(info, True, (255, 255, 255))
+			text2 = font.render(info2, True, (255, 255, 255))
+			text3 = font.render(info3, True, (255, 255, 255))
 			g_vars['window'].blit(text, (10, g_vars['height'] - 30))
+			g_vars['window'].blit(text2, (10, g_vars['height'] - 60))
+			g_vars['window'].blit(text3, (10, g_vars['height'] - 90))
 
 			pygame.display.flip()
 
@@ -330,6 +411,22 @@ class App:
 									color
 								)
 							)
+					elif event.key == K_n:  
+						if config_files:
+							config_index = (config_index + 1) % len(config_files)
+							print(f"Selected config {config_index}")
+							selected_config=config_index
+					elif event.key == K_p:  
+						if config_files:
+							config_index = (config_index - 1) % len(config_files)
+							print(f"Selected config {config_index}")
+					elif event.key == K_v:  
+						if config_files and config_index >= 0:
+							load_config(config_index)
+					elif event.key == K_a:  
+						save_new_config()
+					elif event.key == K_s:  
+						save_config()
 					elif event.key == K_f:
 						
 						finish_line_row = grid_y // g_vars['grid']
