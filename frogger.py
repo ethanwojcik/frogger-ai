@@ -55,65 +55,73 @@ g_vars['grid'] = 32
 g_vars['window'] = pygame.display.set_mode( [g_vars['width'], g_vars['height']], pygame.HWSURFACE)
 g_vars['roll_interval']=50
 g_vars['config']=None
-
+g_vars['total_episodes']=0
+g_vars['reload']=500
+g_vars['penalty']=3
 stats_queue= Queue()
 unit=(g_vars['width']/13)
 from collections import deque
 
 class DQNAgent:
-    def __init__(self, state_dim, n_actions, gamma=0.99, epsilon=1.0, epsilon_decay=0.995, epsilon_min=0.05, lr=1e-3, batch_size=64, memory_size=50000,inner_layer_size=512):
-        self.n_actions = n_actions
-        self.gamma = gamma
-        self.epsilon = epsilon
-        self.epsilon_decay = epsilon_decay
-        self.epsilon_min = epsilon_min
-        self.batch_size = batch_size
-        self.memory = deque(maxlen=memory_size)
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.model = DQN(state_dim, n_actions,inner_layer_size).to(self.device)
-        self.target_net = DQN(state_dim, n_actions,inner_layer_size).to(self.device)
-        self.target_net.load_state_dict(self.model.state_dict())
-        self.target_net.eval()
-        self.optimizer = optim.Adam(self.model.parameters(), lr=lr)
-        self.loss_fn = nn.MSELoss()
+	def __init__(self, state_dim, n_actions, gamma, epsilon, epsilon_decay, epsilon_min, lr, batch_size, memory_size,inner_layer_size,use_prev):
+		self.n_actions = n_actions
+		self.gamma = gamma
+		self.epsilon = epsilon
+		self.epsilon_decay = epsilon_decay
+		self.epsilon_min = epsilon_min
+		self.batch_size = batch_size
+		self.mem_size=memory_size
+		self.exceed_mem=False
+		self.memory = deque(maxlen=memory_size)
+		self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+		if(use_prev):
+			self.model=torch.load("frogger_dqn.pth")
+			self.model.eval()
+		else:
+			self.model = DQN(state_dim, n_actions,inner_layer_size).to(self.device)
+		self.target_net = DQN(state_dim, n_actions,inner_layer_size).to(self.device)
+		self.target_net.load_state_dict(self.model.state_dict())
+		self.target_net.eval()
+		self.optimizer = optim.Adam(self.model.parameters(), lr=lr)
+		self.loss_fn = nn.MSELoss()
 
-    def select_action(self, state):
-        if random.random() < self.epsilon:
-            return random.randrange(self.n_actions)
-        state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
-        with torch.no_grad():
-            q_values = self.model(state)
-        return q_values.argmax().item()
+	def select_action(self, state):
+		if random.random() < self.epsilon:
+			return random.randrange(self.n_actions)
+		state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+		with torch.no_grad():
+			q_values = self.model(state)
+		return q_values.argmax().item()
 
-    def store(self, state, action, reward, next_state, done):
-        self.memory.append((state, action, reward, next_state, done))
-    def load(self, filename):
-        self.model.load_state_dict(torch.load(filename))
-        self.model.eval()
-    def train(self):
-        if len(self.memory) < self.batch_size:
-            return
-        batch = random.sample(self.memory, self.batch_size)
-        states, actions, rewards, next_states, dones = zip(*batch)
+	def store(self, state, action, reward, next_state, done):
+		self.memory.append((state, action, reward, next_state, done))
+	def load(self, filename):
+		self.model.load_state_dict(torch.load(filename))
+		self.model.eval()
+	def train(self):
+		if len(self.memory) < self.batch_size:
+			return
+		batch = random.sample(self.memory, self.batch_size)
+		states, actions, rewards, next_states, dones = zip(*batch)
 
-        states = torch.FloatTensor(states).to(self.device)
-        actions = torch.LongTensor(actions).unsqueeze(1).to(self.device)
-        rewards = torch.FloatTensor(rewards).unsqueeze(1).to(self.device)
-        next_states = torch.FloatTensor(next_states).to(self.device)
-        dones = torch.FloatTensor(dones).unsqueeze(1).to(self.device)
+		states = torch.FloatTensor(states).to(self.device)
+		actions = torch.LongTensor(actions).unsqueeze(1).to(self.device)
+		rewards = torch.FloatTensor(rewards).unsqueeze(1).to(self.device)
+		next_states = torch.FloatTensor(next_states).to(self.device)
+		dones = torch.FloatTensor(dones).unsqueeze(1).to(self.device)
 
-        q_values = self.model(states).gather(1, actions)
-        with torch.no_grad():
-            next_q_values = self.target_net(next_states).max(1, keepdim=True)[0]
-            target_q = rewards + self.gamma * next_q_values * (1 - dones)
+		q_values = self.model(states).gather(1, actions)
+		with torch.no_grad():
+			next_q_values = self.target_net(next_states).max(1, keepdim=True)[0]
+			target_q = rewards + self.gamma * next_q_values * (1 - dones)
 
-        loss = self.loss_fn(q_values, target_q)
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
+		loss = self.loss_fn(q_values, target_q)
+		self.optimizer.zero_grad()
+		loss.backward()
+		self.optimizer.step()
 
-    def decay_epsilon(self):
-        self.epsilon = max(self.epsilon * self.epsilon_decay, self.epsilon_min)
+	def decay_epsilon(self):
+		self.epsilon = max(self.epsilon * self.epsilon_decay, self.epsilon_min)
 class App:
 	
 	def __init__(self):
@@ -141,7 +149,11 @@ class App:
 			"lr": 1e-3,
 			"batch_size": 64,
 			"memory_size": 50000,
-			"inner_layer_size": 512  # <-- Add this line for DQN layer size
+			"inner_layer_size": 512,
+			"episodes": 10000,
+			"reload_freq":500,
+			"penalty_per_tick":3,
+			"use_prev_model":False
 		}
 		param_keys = list(params.keys())
 		selected = 0
@@ -164,7 +176,7 @@ class App:
 				g_vars['window'].blit(text, (50, 80 + i * 25))
 
 			info = font.render("Arrows: Select/Change | Enter: Confirm", True, (180, 180, 180))
-			g_vars['window'].blit(info, (50, 350))
+			g_vars['window'].blit(info, (50, 375))
 			pygame.display.flip()
 
 			for event in pygame.event.get():
@@ -189,6 +201,14 @@ class App:
 							params[key] = max(1000, params[key] - 1000)
 						elif key in ["inner_layer_size"]:
 							params[key] = max(16, int(params[key]/2))
+						elif key in ["episodes"]:
+							params[key]= max(params[key]-1000,1000)
+						elif key in ["reload_freq"]:
+							params[key]= max(params[key]-100,10)
+						elif key in ["penalty_per_tick"]:
+							params[key]= max(params[key]-1,0)							
+						elif key in ["use_prev_model"]:
+							params[key]= not params[key]
 					elif event.key == K_RIGHT:
 						key = param_keys[selected]
 						# Increase value
@@ -202,6 +222,14 @@ class App:
 							params[key] = params[key] + 1000
 						elif key in ["inner_layer_size"]:
 							params[key] = int (params[key]*2)
+						elif key in ["episodes"]:
+							params[key]= params[key]+1000
+						elif key in ["reload_freq"]:
+							params[key]= params[key]+100
+						elif key in ["penalty_per_tick"]:
+							params[key]= params[key]+1			
+						elif key in ["use_prev_model"]:
+							params[key]= not params[key]											
 					elif event.key == K_RETURN:
 						running = False
 
@@ -358,21 +386,11 @@ class App:
 			#self.lanes.append( Lane( 5, c=(50, 192, 122) ) )
 			self.lanes.append( Lane( 6, c=(50, 192, 122) ) )
 			self.lanes.append( Lane( 7, c=(50, 192, 122) ) )
-			#self.lanes.append( Lane( 8, c=(50, 192, 122) ) )
-			#self.lanes.append( Lane( 9, c=(50, 192, 122) ) )
-			#self.lanes.append( Lane( 9, c=(50, 192, 122) ) )
-			
-			#self.lanes.append( Lane( 9, t='car', c=(195, 195, 195), n=1, l=13, spc=250, spd=-unit) )
 
-			#self.lanes.append( Lane( 10, c=(50, 192, 122) ) )
 			self.lanes.append( Lane( 10, t='car', c=(195, 195, 195), n=0, l=12, spc=unit*4, spd=unit) )
 			self.lanes.append( Lane( 8, t='car', c=(195, 195, 195), n=0, l=12, spc=unit*4, spd=unit) )
 
-			#self.lanes.append( Lane( 11, c=(50, 192, 122) ) )
-			#self.lanes.append( Lane( 8, t='car', c=(195, 195, 195), n=0, l=2, spc=180, spd=-2) )
-			#self.lanes.append( Lane( 9, t='car', c=(195, 195, 195), n=0, l=4, spc=240, spd=-1) )
-			#self.lanes.append( Lane( 10, t='car', c=(195, 195, 195), n=0, l=2, spc=130, spd=2.5) )
-			#self.lanes.append( Lane( 7, t='car', c=(195, 195, 195), n=2, l=3, spc=140, spd=1) )
+
 			self.lanes.append( Lane( 9, t='car', c=(195, 195, 195), n=0, l=12, spc=unit*4, spd=unit) )
 
 
@@ -589,6 +607,7 @@ class App:
 
 	def handle_fps(self,agent):
 		stuck=False
+		retVal=False
 		while True:
 			for event in pygame.event.get():
 				
@@ -601,6 +620,12 @@ class App:
 				if event.type == KEYDOWN and event.key == K_s and not stuck:
 					torch.save(agent.model.state_dict(),"frogger_dqn.pth")
 					print("model saved to frogger_dqn.pth")
+					break
+				if event.type == KEYDOWN and event.key == K_l and not stuck:
+					agent.model.load_state_dict(torch.load('frogger_dqn.pth'))
+					agent.model.eval()
+					print("model loaded from frogger_dqn.pth")
+					retVal=True
 					break
 				if event.type == KEYDOWN and event.key == K_d and not stuck:
 					g_vars['fps']=1
@@ -623,6 +648,7 @@ class App:
 
 			if(stuck==False):
 				break
+		return retVal
 					
 
 		
@@ -678,40 +704,32 @@ class App:
 
 	def run_dqn_episode(self, agent):
 
-		episodes = 2000000
+		episodes = g_vars['total_episodes']
 
 		steps_done=0
 		total_high_score=0
 		rolling_high_score=0
-		rewards_per_episode=[]
 		rolling_effective=0
 		effective=0
 		for ep in range(episodes):		
 			self.init()
 			self.state = 'PLAYING'
 			total_reward = 0
-
 			episode_hs=0
 			state = np.array(self.get_game_state(), dtype=np.float32)
-			#print(state)
 			episode_reward=0
+			autoLoad=False
+			isLoaded=False
+			flag=False
 			prev_hs=self.score.high_score
-
 			while self.state == 'PLAYING':
 				self.draw()
-
 				action = agent.select_action(state)
 				prev_score = self.score.score
 				prev_hs=self.score.high_score
 				self.step(action)
-				
-
-				
 				next_state = np.array(self.get_game_state(), dtype=np.float32)
-				#print(next_state)
-				#print(reward)
 				episode_hs=self.score.high_score
-				#self.update()
 				done = self.score.lives == 0
 				reward=self.score.score
 				agent.store(state, action, reward, next_state, done)
@@ -719,16 +737,20 @@ class App:
 				state = next_state
 				episode_reward+=self.score.high_score
 				agent.train()
+				
 
 				if(self.score.score>0):
-					self.score.score-=3
+					self.score.score-=g_vars['penalty']
 
-				self.handle_fps(agent)
+				isLoaded=self.handle_fps(agent)
+				if(isLoaded):
+					flag=True
 				#self.draw()
 				#print(g_vars['fps'])
 				self.clock.tick(g_vars['fps'])
-				if(steps_done % 500) ==0:
+				if(steps_done % g_vars['reload']) ==0: #auto reload
 					agent.target_net.load_state_dict(agent.model.state_dict())
+					autoLoad=True
 				steps_done+=1
 
 				if done:
@@ -742,19 +764,31 @@ class App:
 				total_high_score+=episode_hs
 				rolling_high_score+=episode_hs
 				rolling_effective+=1
+			if(agent.exceed_mem==False):
+				if(len(agent.memory)==agent.mem_size):
+					print("||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||")
+
+					print(f"Warning: Used all of memory by ep {ep}")
+					print("||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||")
+
+					agent.exceed_mem=True
 			if((ep)%g_vars['roll_interval']==0):
+
 				percentage=effective/ep
 				percent_roll=rolling_effective/g_vars['roll_interval']
-				print("======================")
+				print("==============================================================================================================")
 				print(f"Episode {ep}: Effective: {effective} out of {ep} total = {percentage:.3f}%, Rolling Average: {rolling_effective} in last {g_vars['roll_interval']} = {percent_roll:.3f}%")
 				print(f"Average High Score={(total_high_score/ep):.3f}, Rolling High Score={(rolling_high_score/g_vars['roll_interval']):.3f}")
-				print("======================")
+				#print("==============================================================================================================")
 				rolling_effective=0
 				rolling_high_score=0
+
 			statObj={'episode':ep,
 			'avg_high_score':total_high_score/ep,
 			'rolling_high_score':rolling_high_score/g_vars['roll_interval'],
 			'effective_percentage':effective/ep,
+			'autoLoad':autoLoad,
+			'manualLoad':flag
 			}
 			stats_queue.put(statObj)
 
@@ -770,21 +804,34 @@ def stats_plotter(stats_queue):
 	avg_high_scores = []
 	rolling_high_scores = []
 	effective_percentages = []
-
+	reload_episodes = []
+	reload__man_episodes = []
 	def update():
-		while(True):
+		while(len(episodes)<g_vars['total_episodes']):
 			stats = stats_queue.get()
 			#print(stats)
 			episodes.append(stats['episode'])
 			avg_high_scores.append(stats['avg_high_score'])
 			rolling_high_scores.append(stats['rolling_high_score'])
-			#effective_percentages.append(stats['effective_percentage'])
+			load=stats['autoLoad']
+			manLoad=stats['manualLoad']
+			#.append(stats['effective_percentage'])
+			if load:
+				reload_episodes.append(episodes[-1])
+			if manLoad:
+				reload__man_episodes.append(episodes[-1])
+				#print("load")
 			if(len(episodes)%g_vars['roll_interval']==0):
 
 				ax.clear()
 				ax.plot(episodes, avg_high_scores, label="Avg High Score", color='cyan')
 				ax.plot(episodes, rolling_high_scores, label="Rolling High Score", color='orange')
 				#ax.plot(episodes, effective_percentages, label="Effectiveness", color='green')
+				for i, reload_ep in enumerate(reload_episodes):
+					ax.axvline(x=reload_ep, color='magenta', linestyle='--', linewidth=0.5, label='Target Net Reload' if i == 0 else "")
+				for i, reload_ep in enumerate(reload__man_episodes):
+					ax.axvline(x=reload_ep, color='black', linestyle='--', linewidth=0.5, 
+				label='Manual Reload' if i == 0 else "")
 				ax.set_title("Frogger Training Stats")
 				ax.set_xlabel("Episode")
 				ax.set_ylabel("Score")
@@ -809,19 +856,22 @@ if __name__ == "__main__":
 	
 	params = app.hyperparameter_setup()
 	#print(params)
+	g_vars['total_episodes']=params['episodes']
+	g_vars['reload']=params['reload_freq']
+	g_vars['penalty']=params['penalty_per_tick']
+	
+
 	app.setup_interface()
 	
 	#app.execute()
 	
 	state_dim = len(app.get_game_state())
-	agent= DQNAgent(state_dim=state_dim, n_actions=5,gamma=params['gamma'],epsilon=params['epsilon'],epsilon_decay=params['epsilon_decay'],epsilon_min=params['epsilon_min'],lr=params['lr'],batch_size=params['batch_size'],memory_size=params['memory_size'],inner_layer_size=params['inner_layer_size'])  # 4 actions: left, right, up, down
-	#agent.load("frogger_dqn.pth")
+	agent= DQNAgent(state_dim=state_dim, n_actions=5,gamma=params['gamma'],epsilon=params['epsilon'],epsilon_decay=params['epsilon_decay'],epsilon_min=params['epsilon_min'],lr=params['lr'],batch_size=params['batch_size'],memory_size=params['memory_size'],inner_layer_size=params['inner_layer_size'],use_prev=params['use_prev_model'])  # 4 actions: left, right, up, down
+
 	
 	t1 = threading.Thread(target=app.run_dqn_episode, args=(agent,))
 	t1.start()
 	stats_plotter(stats_queue)
 	t1.join()
 	app.cleanup()
-	# for ep in range(episodes):
-	# 	#reward = app.run_dqn_episode(agent,rewards_per_episode)
-	# 	print(f"Episode {ep+1}: Total Reward (Score) = {reward}, Epsilon = {agent.epsilon:.3f}")
+
