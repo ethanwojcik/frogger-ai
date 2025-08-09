@@ -167,7 +167,9 @@ class App:
 		while running:
 			g_vars['window'].fill((20, 20, 20))
 			title = font.render("Select DQN Hyperparameters", True, (255, 255, 255))
+			help = font.render("See README.md for desc. of paramaters", True, (255, 255, 255))
 			g_vars['window'].blit(title, (50, 30))
+			g_vars['window'].blit(help, (50, 50))
 
 			for i, key in enumerate(param_keys):
 				color = (255, 255, 0) if i == selected else (200, 200, 200)
@@ -367,11 +369,14 @@ class App:
 
 			info2 = f"[N]ext [P]rev [V]iew [A]dd(new) [S]ave(overwrite)"
 			info3 = f"Current Config Selected: {selected_config}"
+			info4 = f"See README.md for in-depth instructions"
 			info = f"Type: {selected_type.upper()} | Length: {selected_length} | Speed: {selected_speed} | [L]og [C]ar [Arrows] Size/Speed [Enter] Start"
 			text = font.render(info, True, (255, 255, 255))
 			text2 = font.render(info2, True, (255, 255, 255))
 			text3 = font.render(info3, True, (255, 255, 255))
+			text4 = font.render(info4, True, (255, 255, 255))
 			g_vars['window'].blit(text, (10, g_vars['height'] - 30))
+			g_vars['window'].blit(text4, (10, g_vars['height'] - 120))
 			g_vars['window'].blit(text2, (10, g_vars['height'] - 60))
 			g_vars['window'].blit(text3, (10, g_vars['height'] - 90))
 
