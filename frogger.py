@@ -279,7 +279,9 @@ class App:
 			print(f"Saved new config: {filename}")
 
 		def save_config():
-			
+			if config_index == 0:
+				print("Config 0 is protected and cannot be overwritten.")
+				return
 			if config_index >= 0 and config_index < len(config_files):
 				filename = config_files[config_index]
 			else:
@@ -420,6 +422,8 @@ class App:
 						if config_files:
 							config_index = (config_index - 1) % len(config_files)
 							print(f"Selected config {config_index}")
+							selected_config=config_index
+
 					elif event.key == K_v:  
 						if config_files and config_index >= 0:
 							load_config(config_index)

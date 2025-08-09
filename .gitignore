@@ -3,7 +3,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
-
+configs
 # Distribution / packaging
 .Python
 env/
@@ -14,6 +14,7 @@ downloads/
 eggs/
 .eggs/
 lib/
+configs/
 lib64/
 parts/
 sdist/
@@ -26,3 +27,4 @@ frogger_dqn.pth
 frogger_board_config.json
 configs/*
 configs/
+/configs
