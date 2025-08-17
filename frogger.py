@@ -57,7 +57,7 @@ g_vars['window'] = pygame.display.set_mode( [g_vars['width'], g_vars['height']],
 g_vars['roll_interval']=50
 g_vars['config']=None
 g_vars['total_episodes']=0
-g_vars['reload']=500
+g_vars['reload']=2500
 g_vars['penalty']=3
 stats_queue= Queue()
 unit=(g_vars['width']/13)
@@ -76,8 +76,11 @@ class DQNAgent:
 		self.memory = deque(maxlen=memory_size)
 		self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 		if(use_prev):
-			self.model=torch.load("frogger_dqn.pth")
+			print("use_prev")
+			self.model = DQN(state_dim, n_actions, inner_layer_size).to(self.device)
+			self.model.load_state_dict(torch.load("frogger_dqn.pth"))
 			self.model.eval()
+			torch.no_grad
 		else:
 			self.model = DQN(state_dim, n_actions,inner_layer_size).to(self.device)
 		self.target_net = DQN(state_dim, n_actions,inner_layer_size).to(self.device)
@@ -152,7 +155,7 @@ class App:
 			"memory_size": 50000,
 			"inner_layer_size": 512,
 			"episodes": 10000,
-			"reload_freq":500,
+			"reload_freq":2500,
 			"penalty_per_tick":3,
 			"use_prev_model":False
 		}
@@ -503,7 +506,7 @@ class App:
 			self.lanes.append( Lane( 11, t='car', c=(195, 195, 195), n=0, l=12, spc=unit*4, spd=unit) )
 			self.lanes.append( Lane( 12, c=(50, 192, 122) ) )
 
-		rand_x=random.randint(0,13)
+		rand_x=random.randint(0,12)
 	
 		self.frog.x=(g_vars['width'])/13 * rand_x
 
@@ -873,7 +876,6 @@ class App:
 			if(agent.exceed_mem==False):
 				if(len(agent.memory)==agent.mem_size):
 					print("||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||")
-
 					print(f"Warning: Used all of memory by ep {ep}")
 					print("||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||")
 
@@ -972,7 +974,7 @@ if __name__ == "__main__":
 	#app.execute()
 	
 	state_dim = len(app.get_game_state())
-	agent= DQNAgent(state_dim=state_dim, n_actions=5,gamma=params['gamma'],epsilon=params['epsilon'],epsilon_decay=params['epsilon_decay'],epsilon_min=params['epsilon_min'],lr=params['lr'],batch_size=params['batch_size'],memory_size=params['memory_size'],inner_layer_size=params['inner_layer_size'],use_prev=params['use_prev_model'])  # 4 actions: left, right, up, down
+	agent= DQNAgent(state_dim=state_dim, n_actions=5,gamma=params['gamma'],epsilon=params['epsilon'],epsilon_decay=params['epsilon_decay'],epsilon_min=params['epsilon_min'],lr=params['lr'],batch_size=params['batch_size'],memory_size=params['memory_size'],inner_layer_size=params['inner_layer_size'],use_prev=params['use_prev_model']) 
 
 	
 	t1 = threading.Thread(target=app.run_dqn_episode, args=(agent,))

@@ -59,7 +59,7 @@ class Frog(Rectangle):
 		self.ob=False
 
 	def reset(self):
-		rand_x=random.randint(0,13)
+		rand_x=random.randint(0,12)
 
 		self.x = (g_vars['width'])/13 * rand_x
 		self.y = self.y0
